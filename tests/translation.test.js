@@ -130,7 +130,7 @@ function loadBackgroundHelpers({
     YTD_PROVIDERS: require("../providers.js"),
     YTD_SETTINGS: {
       ...require("../settings.js"),
-      // 这些测试直接喂固定的 settings，不需要走归一化
+      // These tests feed fixed settings directly and need no normalisation
       normalize: (value) => value,
     },
   };

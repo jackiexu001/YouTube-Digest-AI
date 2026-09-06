@@ -8,8 +8,8 @@ const ascii = (bytes, offset, length) =>
 const u32 = (bytes, offset) => new DataView(bytes.buffer, bytes.byteOffset).getUint32(offset, true);
 const u16 = (bytes, offset) => new DataView(bytes.buffer, bytes.byteOffset).getUint16(offset, true);
 
-test("生成标准的 16kHz 单声道 16 位 WAV 头", () => {
-  const samples = new Float32Array(16000); // 1 秒
+test("writes a standard 16 kHz mono 16-bit WAV header", () => {
+  const samples = new Float32Array(16000); // one second
   const bytes = wav.encodeWav(samples, 16000);
 
   assert.equal(ascii(bytes, 0, 4), "RIFF");
@@ -17,30 +17,30 @@ test("生成标准的 16kHz 单声道 16 位 WAV 头", () => {
   assert.equal(ascii(bytes, 12, 4), "fmt ");
   assert.equal(ascii(bytes, 36, 4), "data");
 
-  assert.equal(u32(bytes, 16), 16, "fmt 块长度应为 16");
-  assert.equal(u16(bytes, 20), 1, "应为 PCM 格式");
-  assert.equal(u16(bytes, 22), 1, "应为单声道");
-  assert.equal(u32(bytes, 24), 16000, "采样率应为 16000");
-  assert.equal(u16(bytes, 34), 16, "位深应为 16");
+  assert.equal(u32(bytes, 16), 16, "fmt chunk size should be 16");
+  assert.equal(u16(bytes, 20), 1, "format should be PCM");
+  assert.equal(u16(bytes, 22), 1, "should be mono");
+  assert.equal(u32(bytes, 24), 16000, "sample rate should be 16000");
+  assert.equal(u16(bytes, 34), 16, "bit depth should be 16");
 });
 
-test("文件长度与声明的长度一致", () => {
+test("the file length matches the length it declares", () => {
   const samples = new Float32Array(1234);
   const bytes = wav.encodeWav(samples, 16000);
 
   assert.equal(bytes.byteLength, 44 + 1234 * 2);
-  // RIFF 块长度不含开头 8 字节
+  // The RIFF size excludes the leading 8 bytes
   assert.equal(u32(bytes, 4), bytes.byteLength - 8);
-  assert.equal(u32(bytes, 40), 1234 * 2, "data 块长度应等于采样数 × 2");
+  assert.equal(u32(bytes, 40), 1234 * 2, "data chunk size should equal sample count times 2");
 });
 
-test("每秒字节数与采样率、位深自洽", () => {
+test("byte rate is consistent with sample rate and bit depth", () => {
   const bytes = wav.encodeWav(new Float32Array(10), 16000);
-  assert.equal(u32(bytes, 28), 16000 * 2, "byteRate 应为 采样率 × 每样本字节数");
-  assert.equal(u16(bytes, 32), 2, "blockAlign 应为 2");
+  assert.equal(u32(bytes, 28), 16000 * 2, "byteRate should be sample rate times bytes per sample");
+  assert.equal(u16(bytes, 32), 2, "blockAlign should be 2");
 });
 
-test("采样值正确写入，正负都不失真", () => {
+test("sample values are written correctly for both signs", () => {
   const bytes = wav.encodeWav(new Float32Array([0, 0.5, -0.5]), 16000);
   const view = new DataView(bytes.buffer, bytes.byteOffset);
 
@@ -49,31 +49,31 @@ test("采样值正确写入，正负都不失真", () => {
   assert.ok(Math.abs(view.getInt16(48, true) - -0.5 * 0x8000) <= 1);
 });
 
-test("超出范围的采样值被截断，而不是溢出成反向的噪音", () => {
+test("out-of-range samples clamp instead of wrapping into inverted noise", () => {
   const bytes = wav.encodeWav(new Float32Array([2.5, -3.0]), 16000);
   const view = new DataView(bytes.buffer, bytes.byteOffset);
 
-  // 不截断的话 2.5 会绕回成负数，听起来是刺耳的爆音
+  // Without clamping, 2.5 wraps to a negative value and clicks harshly
   assert.equal(view.getInt16(44, true), 0x7fff);
   assert.equal(view.getInt16(46, true), -0x8000);
 });
 
-test("空音频也能生成合法文件，不抛错", () => {
+test("empty audio still produces a valid file rather than throwing", () => {
   const bytes = wav.encodeWav(new Float32Array(0), 16000);
   assert.equal(bytes.byteLength, 44);
   assert.equal(u32(bytes, 40), 0);
 });
 
-test("按时长估算 WAV 体积，用于提示上传量", () => {
-  // 16kHz 单声道 16 位 = 每秒 32000 字节
+test("estimates WAV size from duration, for showing upload size", () => {
+  // 16 kHz mono 16-bit is 32000 bytes per second
   assert.equal(wav.estimateBytes(1), 44 + 32000);
   assert.equal(wav.estimateBytes(300), 44 + 300 * 32000);
 });
 
-test("给出在上传上限内的最大分段时长", () => {
-  // Groq 免费档单次 25MB
+test("reports the longest chunk that fits an upload limit", () => {
+  // Groq free tier allows 25 MB per request
   const seconds = wav.maxChunkSeconds(25 * 1024 * 1024);
-  assert.ok(seconds > 700 && seconds < 900, `算出的上限 ${seconds} 秒不合理`);
-  // 反过来验证：按这个时长生成的文件确实不超限
+  assert.ok(seconds > 700 && seconds < 900, `computed limit of ${seconds}s is implausible`);
+  // Check the other way: a file of that length really does fit
   assert.ok(wav.estimateBytes(seconds) <= 25 * 1024 * 1024);
 });

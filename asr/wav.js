@@ -1,22 +1,23 @@
 /**
- * 把解码后的音频编码成 16kHz 单声道 16 位 WAV。
+ * Encodes decoded audio as 16 kHz mono 16-bit WAV.
  *
- * 为什么必须转 WAV：Groq 按容器头部声明的时长计费和分配资源，
- * 而我们的分片切出来的 m4a 继承了整段视频的时长声明——
- * 传 30 秒的切片会被按整片时长处理，既崩溃又超额度。
- * WAV 声明的是真实时长，是唯一计费正确的格式。
+ * Why WAV is mandatory: Groq bills and allocates against the duration the
+ * container declares, and a slice cut out of a fragmented m4a inherits the
+ * whole video's declared duration. A 30-second slice therefore gets treated
+ * as the full video: it both crashes their pipeline and blows the quota.
+ * WAV declares the real duration, so it is the only correctly billed format.
  *
- * 为什么是 16kHz 单声道：Whisper 内部就按这个规格重采样，
- * 所以这么转不损失识别质量，同时把上传量压到最小。
+ * Why 16 kHz mono: Whisper resamples to exactly that internally, so the
+ * conversion costs no accuracy while keeping the upload as small as possible.
  */
 var YTD_WAV = (() => {
   const SAMPLE_RATE = 16000;
   const BYTES_PER_SAMPLE = 2;
 
   /**
-   * @param {Float32Array} samples 取值范围 -1..1
+   * @param {Float32Array} samples in the range -1..1
    * @param {number} sampleRate
-   * @returns {Uint8Array} 完整的 WAV 文件
+   * @returns {Uint8Array} a complete WAV file
    */
   function encodeWav(samples, sampleRate = SAMPLE_RATE) {
     const dataBytes = samples.length * BYTES_PER_SAMPLE;
@@ -30,41 +31,42 @@ var YTD_WAV = (() => {
     ascii(8, "WAVE");
 
     ascii(12, "fmt ");
-    view.setUint32(16, 16, true);            // fmt 块长度
+    view.setUint32(16, 16, true);            // fmt chunk size
     view.setUint16(20, 1, true);             // PCM
-    view.setUint16(22, 1, true);             // 单声道
+    view.setUint16(22, 1, true);             // mono
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * BYTES_PER_SAMPLE, true);
     view.setUint16(32, BYTES_PER_SAMPLE, true);
-    view.setUint16(34, 16, true);            // 位深
+    view.setUint16(34, 16, true);            // bit depth
 
     ascii(36, "data");
     view.setUint32(40, dataBytes, true);
 
     for (let i = 0; i < samples.length; i++) {
-      // 必须先截断：超出 -1..1 的值直接转换会绕回成反向的值，
-      // 听起来是刺耳的爆音，也会让识别结果变差
+      // Clamp first: a value outside -1..1 wraps around to the opposite
+      // sign, which sounds like a harsh click and degrades recognition
       const value = Math.max(-1, Math.min(1, samples[i]));
       view.setInt16(44 + i * BYTES_PER_SAMPLE, value < 0 ? value * 0x8000 : value * 0x7fff, true);
     }
     return new Uint8Array(view.buffer);
   }
 
-  /** 按时长估算 WAV 体积，用来在界面上提示上传量。 */
+  /** Estimates WAV size from duration, for showing the upload size. */
   function estimateBytes(seconds) {
     return 44 + Math.round(seconds * SAMPLE_RATE * BYTES_PER_SAMPLE);
   }
 
-  /** 在给定上传上限内，单段最长能放多少秒音频。 */
+  /** How many seconds fit in one chunk under a given upload limit. */
   function maxChunkSeconds(limitBytes) {
     return Math.floor((limitBytes - 44) / (SAMPLE_RATE * BYTES_PER_SAMPLE));
   }
 
   /**
-   * 浏览器里把一段音频字节解码并重采样成 16kHz 单声道 WAV。
+   * Decodes audio bytes in the browser and resamples them to 16 kHz mono WAV.
    *
-   * 这一层依赖 AudioContext，无法在 Node 里测试，所以保持极薄：
-   * 真正的编码逻辑都在上面的纯函数里。
+   * This layer needs AudioContext and cannot be tested under Node, so it is
+   * kept as thin as possible; the real encoding lives in the pure function
+   * above.
    */
   async function toWavFromAudioBytes(bytes, audioContextFactory) {
     const makeContext = audioContextFactory || (() => new AudioContext());
@@ -85,7 +87,7 @@ var YTD_WAV = (() => {
     );
     const source = offline.createBufferSource();
     source.buffer = decoded;
-    // 多声道接到单声道输出会自动混音，不需要手工合并
+    // Connecting a multi-channel buffer to a mono destination downmixes
     source.connect(offline.destination);
     source.start();
     const rendered = await offline.startRendering();

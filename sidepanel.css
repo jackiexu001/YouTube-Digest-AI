@@ -26,13 +26,13 @@
   --text-muted: #8b8b93;
 
   /* Accents */
-  --accent: #c2410c; /* burnt orange — 白字对比度 5.18，达 WCAG AA */
-  --accent-hover: #9a3412;
-  --accent-dim: rgba(194, 65, 12, 0.1);
+  --accent: #ef6826; /* vivid orange, chosen for brand recognition over white-text contrast */
+  --accent-hover: #d9530f;
+  --accent-dim: rgba(239, 104, 38, 0.1);
   --sage: #7c8b6f; /* quiet secondary */
   --sage-dim: rgba(124, 139, 111, 0.14);
   --success: #7c8b6f;
-  --highlight: #ef6826; /* 品牌鲜橙，仅用于装饰，不承载文字 */
+  --highlight: #ef6826; /* brand orange, decorative only, never carries text */
 
   /* Soft shadows give depth instead of heavy borders */
   --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.06);
@@ -195,7 +195,7 @@ body {
 .tab.active {
   color: #fff;
   background: var(--accent);
-  box-shadow: 0 2px 8px rgba(194, 65, 12, 0.3);
+  box-shadow: 0 2px 8px rgba(239, 104, 38, 0.3);
 }
 
 .tab.active:hover {
@@ -906,7 +906,7 @@ body {
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.18s ease;
-  box-shadow: 0 6px 18px rgba(194, 65, 12, 0.4);
+  box-shadow: 0 6px 18px rgba(239, 104, 38, 0.4);
 }
 
 .follow-playback-btn:hover {
@@ -1029,7 +1029,7 @@ body {
   cursor: pointer;
   transition: all 0.18s ease;
   margin-top: 8px;
-  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.3);
+  box-shadow: 0 4px 14px rgba(239, 104, 38, 0.3);
 }
 
 .error-btn:hover {
@@ -1057,7 +1057,7 @@ body {
   height: 84px;
   border-radius: var(--r-xl);
   background: linear-gradient(145deg, #d2735a, #bd5740);
-  box-shadow: 0 12px 30px rgba(194, 65, 12, 0.35);
+  box-shadow: 0 12px 30px rgba(239, 104, 38, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1358,7 +1358,7 @@ body {
 .notes-filter .enhance-btn.active {
   background: var(--accent);
   color: white;
-  box-shadow: 0 2px 6px rgba(194, 65, 12, 0.3);
+  box-shadow: 0 2px 6px rgba(239, 104, 38, 0.3);
 }
 
 .notes-filter .enhance-btn.active:hover:not(:disabled) {

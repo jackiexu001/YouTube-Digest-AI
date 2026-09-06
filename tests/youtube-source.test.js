@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const source = require("../asr/youtube-source.js");
 
-test("换客户端身份的请求带上匿名会话标识与客户端声明", () => {
+test("the client-swap request carries the anonymous session id and client declaration", () => {
   const request = source.buildPlayerRequest({ videoId: "abc12345678", visitorData: "VD", client: "VISIONOS" });
 
   assert.equal(request.url, "/youtubei/v1/player");
@@ -12,16 +12,16 @@ test("换客户端身份的请求带上匿名会话标识与客户端声明", ()
   assert.equal(request.body.videoId, "abc12345678");
   assert.equal(request.body.context.client.clientName, "VISIONOS");
   assert.equal(request.body.context.client.visitorData, "VD");
-  // 不带用户的登录 Cookie：匿名标识已经够用，没必要把请求和账号绑定
+  // No login cookie: the anonymous id suffices, so requests are never tied to an account
   assert.equal(request.credentials, "omit");
 });
 
-test("VISIONOS 失败时还有 IOS 可以退", () => {
+test("IOS remains as a fallback when VISIONOS fails", () => {
   const clients = source.CLIENTS.map((c) => c.name);
   assert.deepEqual(clients, ["VISIONOS", "IOS"]);
 });
 
-test("从播放器响应里挑出码率最低的 m4a", () => {
+test("picks the lowest-bitrate m4a from the player response", () => {
   const picked = source.pickAudioFormat({
     streamingData: {
       adaptiveFormats: [
@@ -33,14 +33,14 @@ test("从播放器响应里挑出码率最低的 m4a", () => {
     },
   });
 
-  // m4a 的索引表结构简单，能纯字节切片；webm 需要另写 EBML 解析
+  // m4a carries a simple index allowing byte-level slicing; webm would need an EBML parser
   assert.equal(picked.url, "https://m4a-lo");
   assert.equal(picked.itag, 139);
   assert.equal(picked.contentLength, 123);
 });
 
-test("没有带直连地址的音频格式时返回 null，让调用方给出明确提示", () => {
-  // YouTube 网页版已转 SABR，格式列表里可能一个地址都没有
+test("returns null when no format has a direct URL, so the caller can say why", () => {
+  // The YouTube web client moved to SABR, so the list may carry no URLs at all
   assert.equal(
     source.pickAudioFormat({
       streamingData: { adaptiveFormats: [{ itag: 139, mimeType: "audio/mp4", bitrate: 5 }] },
@@ -50,7 +50,7 @@ test("没有带直连地址的音频格式时返回 null，让调用方给出明
   assert.equal(source.pickAudioFormat(null), null);
 });
 
-test("只有 webm 时也要能用，而不是直接放弃", () => {
+test("webm alone is still usable rather than a dead end", () => {
   const picked = source.pickAudioFormat({
     streamingData: {
       adaptiveFormats: [
@@ -62,9 +62,9 @@ test("只有 webm 时也要能用，而不是直接放弃", () => {
   assert.equal(picked.container, "webm");
 });
 
-test("读出视频时长与自带字幕轨清单", () => {
+test("reads the duration and the native caption track list", () => {
   const info = source.readVideoInfo({
-    videoDetails: { lengthSeconds: "2336", title: "标题" },
+    videoDetails: { lengthSeconds: "2336", title: "Title" },
     captions: {
       playerCaptionsTracklistRenderer: {
         captionTracks: [
@@ -76,47 +76,48 @@ test("读出视频时长与自带字幕轨清单", () => {
   });
 
   assert.equal(info.durationSeconds, 2336);
-  assert.equal(info.title, "标题");
+  assert.equal(info.title, "Title");
   assert.equal(info.captionTracks.length, 2);
   assert.equal(info.captionTracks[0].languageCode, "zh");
   assert.equal(info.captionTracks[0].isAutomatic, false);
   assert.equal(info.captionTracks[1].isAutomatic, true);
 });
 
-test("没有字幕轨时返回空清单，这正是该走 AI 识别的信号", () => {
+test("no caption tracks returns an empty list, which is the signal to use AI", () => {
   const info = source.readVideoInfo({ videoDetails: { lengthSeconds: "60" } });
   assert.deepEqual(info.captionTracks, []);
 });
 
-test("下载原生字幕时请求 json3 格式", () => {
+test("native captions are requested in json3 format", () => {
   const url = source.captionUrl("https://www.youtube.com/api/timedtext?v=x&lang=zh");
   assert.match(url, /[?&]fmt=json3/);
 });
 
-test("把 json3 字幕转成统一的分段格式", () => {
+test("converts json3 captions into the shared segment format", () => {
   const segments = source.parseCaptionJson({
     events: [
-      { tStartMs: 0, dDurationMs: 2000, segs: [{ utf8: "第一" }, { utf8: "句" }] },
-      { tStartMs: 2000, dDurationMs: 1500, segs: [{ utf8: "第二句" }] },
-      { tStartMs: 4000 },                                  // 没有文字，应跳过
-      { tStartMs: 5000, dDurationMs: 1000, segs: [{ utf8: "\n" }] },  // 只有换行，应跳过
+      { tStartMs: 0, dDurationMs: 2000, segs: [{ utf8: "first" }, { utf8: " line" }] },
+      { tStartMs: 2000, dDurationMs: 1500, segs: [{ utf8: "second line" }] },
+      { tStartMs: 4000 },                                  // no text, should be skipped
+      { tStartMs: 5000, dDurationMs: 1000, segs: [{ utf8: "\n" }] },  // newline only, should be skipped
     ],
   });
 
   assert.deepEqual(segments, [
-    { start: 0, end: 2, text: "第一句" },
-    { start: 2, end: 3.5, text: "第二句" },
+    { start: 0, end: 2, text: "first line" },
+    { start: 2, end: 3.5, text: "second line" },
   ]);
 });
 
-test("字幕结构不符合预期时返回空数组，交给下一层兜底", () => {
+test("an unexpected caption shape returns an empty array for the next layer", () => {
   assert.deepEqual(source.parseCaptionJson(null), []);
   assert.deepEqual(source.parseCaptionJson({ events: [] }), []);
 });
 
-test("即使 webm 码率更低也要选 m4a，因为只有 m4a 能按时间切片", () => {
-  // opus 编码效率高，真实视频里 webm 的码率常常比 m4a 低。
-  // 若只按码率排序会选中 webm，而我们的 sidx 解析切不了 webm，整个功能就废了。
+test("m4a wins even at a higher bitrate, because only m4a can be sliced by time", () => {
+  // Opus is more efficient, so in real videos webm often has the lower
+  // bitrate. Sorting by bitrate alone would pick webm, which the sidx parser
+  // cannot slice, breaking the whole feature.
   const picked = source.pickAudioFormat({
     streamingData: {
       adaptiveFormats: [

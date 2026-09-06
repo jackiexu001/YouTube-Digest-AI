@@ -1,12 +1,14 @@
 /**
- * 真实 YouTube 音频流的 init 段（itag 139，AAC 48kbps 分片 MP4）。
+ * The init segment of a real YouTube audio stream (itag 139, AAC 48 kbps
+ * fragmented MP4).
  *
- * 取自视频 jpoMabs9t4s 的低码率纯音频轨，1796 字节，包含 ftyp、moov 和
- * 描述全部 86 个片段的 sidx 索引表。用真实字节而不是自己构造的样本，
- * 是为了避免把对格式的误解一起编进测试里。
+ * Taken from the low-bitrate audio-only track of video jpoMabs9t4s: 1796
+ * bytes covering ftyp, moov and a sidx describing all 86 fragments. Real
+ * bytes rather than a hand-built sample, so a misreading of the format
+ * cannot be baked into the test alongside the code.
  *
- * 已知的正确答案（由 ffprobe 独立核对）：
- *   片段数 86，总时长 856.073 秒，总字节 5221266，init 段长 1796 字节
+ * Known-correct values, verified independently with ffprobe:
+ *   86 fragments, 856.073 seconds, 5,221,266 bytes, 1796-byte init segment
  */
 const INIT_SEGMENT_BASE64 =
   "AAAAGGZ0eXBkYXNoAAAAAGlzbzZtcDQxAAACxG1vb3YAAABsbXZoZAAAAADlpgRN5aYETQAArEQC" +

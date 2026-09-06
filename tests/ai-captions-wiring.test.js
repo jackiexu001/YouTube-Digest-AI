@@ -11,28 +11,28 @@ const ASR_MODULES = [
   "asr/mp4-index.js", "asr/fetcher.js", "asr/wav.js", "asr/merge.js", "asr/transcribe.js",
 ];
 
-test("所有 asr 模块都被 background.js 加载", () => {
+test("background.js loads every asr module", () => {
   const background = read("background.js");
   for (const mod of ASR_MODULES) {
-    assert.match(background, new RegExp(`importScripts\\("${mod.replace("/", "\\/")}"\\)`), `没有加载 ${mod}`);
+    assert.match(background, new RegExp(`importScripts\\("${mod.replace("/", "\\/")}"\\)`), `does not load ${mod}`);
   }
 });
 
-test("所有 asr 模块都在打包白名单里，否则打出来的包缺文件", () => {
+test("every asr module is in the release allowlist, or the package ships incomplete", () => {
   const script = read("scripts/check-release.sh");
   for (const mod of ASR_MODULES) {
-    assert.ok(script.includes(mod), `白名单缺少 ${mod}`);
+    assert.ok(script.includes(mod), `allowlist is missing ${mod}`);
   }
 });
 
-test("打包出的清单包含全部 asr 模块", () => {
-  // 白名单只是「允许」，还要确认文件真的存在，否则打包会失败
+test("the packaged file list covers every asr module", () => {
+  // The allowlist only permits; the files must also exist or packaging fails
   for (const mod of ASR_MODULES) {
-    assert.ok(fs.existsSync(path.join(__dirname, "..", mod)), `${mod} 不存在`);
+    assert.ok(fs.existsSync(path.join(__dirname, "..", mod)), `${mod} does not exist`);
   }
 });
 
-/** 只取 background.js 里的纯函数来测，不加载整个 service worker */
+/** Loads only background.js's pure helpers, not the whole service worker */
 function loadHelpers() {
   const sandbox = {
     console, URL, TextDecoder, TextEncoder, AbortController, setTimeout, clearTimeout,
@@ -62,40 +62,40 @@ function loadHelpers() {
   return sandbox.__YTD_TRANSLATION_TESTING__;
 }
 
-test("剥掉播放器自己的分段与封装参数，保留签名参数", () => {
+test("strips the player's own range and framing params while keeping the signature", () => {
   const helpers = loadHelpers();
   const cleaned = helpers.stripPlayerParams(
     "https://x.googlevideo.com/videoplayback?id=1&range=0-100&ump=1&alr=yes&sig=KEEPME&mime=audio%2Fmp4",
   );
   for (const dropped of ["range=", "ump=", "alr="]) {
-    assert.ok(!cleaned.includes(dropped), `${dropped} 没有被剥掉，会拿回错误的数据`);
+    assert.ok(!cleaned.includes(dropped), `${dropped} was not stripped, which returns the wrong data`);
   }
-  // 签名和格式参数必须保留，否则地址失效
-  assert.ok(cleaned.includes("sig=KEEPME"), "签名参数被误删了");
+  // Signature and format params must survive, or the URL stops working
+  assert.ok(cleaned.includes("sig=KEEPME"), "the signature parameter was removed by mistake");
   assert.ok(cleaned.includes("id=1"));
 });
 
-test("字幕转成下游认识的形状，时间戳按分秒格式", () => {
+test("captions convert to the downstream shape with minute:second timestamps", () => {
   const helpers = loadHelpers();
   const shaped = helpers.toTranscriptShape([
-    { start: 0, end: 2.4, text: "第一句" },
-    { start: 65.2, end: 70, text: "第二句" },
+    { start: 0, end: 2.4, text: "first line" },
+    { start: 65.2, end: 70, text: "second line" },
   ]);
 
   assert.equal(shaped.transcript.length, 2);
   assert.equal(shaped.transcript[1].start, 65);
-  assert.equal(shaped.transcriptText, "第一句 第二句");
-  assert.match(shaped.transcriptTextTimestamped, /\[1:05\] 第二句/);
+  assert.equal(shaped.transcriptText, "first line second line");
+  assert.match(shaped.transcriptTextTimestamped, /\[1:05\] second line/);
 });
 
-test("空字幕转形状时不产生空白内容", () => {
+test("converting empty captions produces no blank content", () => {
   const helpers = loadHelpers();
   const shaped = helpers.toTranscriptShape([]);
   assert.equal(shaped.transcript.length, 0);
   assert.equal(shaped.transcriptText, "");
 });
 
-test("manifest 声明了语音识别服务商的域名，否则请求会被 Chrome 拦下", () => {
+test("the manifest declares each recognition provider's host, or Chrome blocks the request", () => {
   const manifest = JSON.parse(read("manifest.json"));
   const hosts = manifest.host_permissions.join(" ");
   const asr = require("../asr/asr-providers.js");
@@ -103,7 +103,7 @@ test("manifest 声明了语音识别服务商的域名，否则请求会被 Chro
     const domain = new URL(provider.baseUrl).hostname;
     assert.ok(
       hosts.includes(domain),
-      `manifest 缺少 ${provider.label} 的域名 ${domain}，识别请求会失败`,
+      `manifest is missing ${provider.label}'s host ${domain}; recognition will fail`,
     );
   }
 });

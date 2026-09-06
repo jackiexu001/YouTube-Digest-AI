@@ -1,14 +1,15 @@
 /**
- * 把分块识别的结果拼回一条完整的时间轴。
+ * Stitches per-chunk recognition results back into one timeline.
  *
- * 分块识别时相邻两块会重叠一小段，同一句话可能被两边都识别到。
- * 合并的规则是按重叠区的中点取舍：中点之前的归前一块，之后的归后一块。
- * 这样切口处的话总有一边是完整的，而不会两边都只识别到半句。
+ * Neighbouring chunks overlap, so the same sentence can come back from both
+ * sides. The rule is to split at the midpoint of the overlap: everything
+ * before it belongs to the earlier chunk, everything after to the later one.
+ * That way a sentence at a seam is complete on one side instead of being
+ * half-recognised on both.
  *
- * 重叠区是从实际数据算出来的，不是按固定的重叠秒数假设。
- * 某块识别失败或两块之间有缺口时，固定假设会把本该保留的字幕误删。
- *
- * 算法沿用 jackiexu001/youtube-transcript 里已经验证过的做法。
+ * The overlap is derived from the actual data rather than assumed from a
+ * fixed overlap length. When a chunk fails, or when two chunks do not
+ * actually touch, the fixed assumption deletes captions that should be kept.
  */
 var YTD_MERGE = (() => {
   function offsetSegments(segments, offsetSeconds) {
@@ -32,8 +33,8 @@ var YTD_MERGE = (() => {
   function mergeChunks(chunks) {
     if (!chunks || !chunks.length) return [];
 
-    // 2 路并发时后一块可能先完成，传进来的顺序不保证。
-    // 重叠区的取舍依赖前后关系，先按时间排好。
+    // With two workers the later chunk can finish first, so the incoming
+    // order is not guaranteed. Overlap resolution depends on adjacency.
     const ordered = [...chunks].sort(
       (a, b) => (Number(a.offset) || 0) - (Number(b.offset) || 0),
     );
@@ -42,15 +43,15 @@ var YTD_MERGE = (() => {
       offsetSegments(chunk.segments, offsets[index]),
     );
 
-    // 边界从实际数据推断，而不是假设相邻块一定按固定重叠量衔接：
-    // 某块识别失败、或两块之间有缺口时，那个假设会误删本该保留的字幕。
+    // Derive the boundary from real data instead of assuming a fixed overlap:
+    // a failed chunk or a gap would otherwise delete captions wrongly.
     const boundaries = [];
     for (let i = 0; i + 1 < shifted.length; i++) {
       const previousEnd = shifted[i].length
         ? Math.max(...shifted[i].map((segment) => segment.end))
         : -Infinity;
       const nextStart = offsets[i + 1];
-      // 只有真的重叠才需要取舍；否则两块各自完整保留
+      // Only actual overlap needs resolving; otherwise keep both in full
       boundaries.push(nextStart < previousEnd ? (nextStart + previousEnd) / 2 : null);
     }
 
@@ -67,7 +68,7 @@ var YTD_MERGE = (() => {
 
     merged.sort((a, b) => a.start - b.start);
 
-    // 去掉紧挨着且文字完全相同的重复
+    // Drop adjacent duplicates with identical text
     const deduped = [];
     for (const segment of merged) {
       const previous = deduped[deduped.length - 1];

@@ -1,18 +1,20 @@
 /**
- * 三层字幕获取的调度。
+ * Three-layer transcript resolution.
  *
- *   ① YouTube 原生字幕 —— 免费、无上限
- *   ② Supadata —— 原项目的路径，降为备胎，兜住第一层的边角情况
- *   ③ AI 识别 —— 前两层都没有时才提供，且必须用户点击才启动
+ *   1. Native YouTube captions - free, no quota
+ *   2. Supadata - the upstream path, demoted to a fallback for edge cases
+ *   3. AI recognition - offered only when neither of the above has captions,
+ *      and only started on an explicit click
  *
- * 依赖以函数形式注入，因此整套判断逻辑可以脱离网络测试。
+ * Dependencies are injected as functions, so the whole decision tree can be
+ * tested without a network.
  */
 var YTD_TRANSCRIPT_SOURCE = (() => {
   /**
-   * @param {Function} youtubeSource 取播放器信息（字幕轨清单 + 时长）
-   * @param {Function} nativeCaptions 下载某条字幕轨
-   * @param {Function} supadata 原项目的 Supadata 取字幕
-   * @param {boolean} aiCaptionsEnabled AI 字幕总开关
+   * @param {Function} youtubeSource reads player info (caption tracks + duration)
+   * @param {Function} nativeCaptions downloads one caption track
+   * @param {Function} supadata the upstream Supadata lookup
+   * @param {boolean} aiCaptionsEnabled master switch for AI captions
    */
   async function resolve({
     videoId,
@@ -28,7 +30,7 @@ var YTD_TRANSCRIPT_SOURCE = (() => {
       player = { ok: false };
     }
 
-    // ---------- ① YouTube 原生字幕 ----------
+    // ---------- 1. Native YouTube captions ----------
     if (player?.ok && player.captionTracks?.length) {
       const track = pickTrack(player.captionTracks);
       try {
@@ -43,13 +45,13 @@ var YTD_TRANSCRIPT_SOURCE = (() => {
           };
         }
       } catch (_error) {
-        // 取不下来就交给下一层，不让用户看到一个技术错误
+        // If it cannot be fetched, fall through rather than surface a technical error
       }
     }
 
-    // ---------- ② YouTube 明确说没有字幕轨 ----------
-    // Supadata 用的是 native 模式，只读 YouTube 原生字幕。
-    // YouTube 自己都说一条都没有，问它也是白花一个 credit。
+    // ---------- 2. YouTube explicitly reports no caption tracks ----------
+    // Supadata runs in native mode and reads only native YouTube captions.
+    // If YouTube itself says there are none, asking Supadata just burns a credit.
     if (player?.ok && player.captionTracks && !player.captionTracks.length) {
       return {
         source: "none",
@@ -59,7 +61,7 @@ var YTD_TRANSCRIPT_SOURCE = (() => {
       };
     }
 
-    // ---------- ③ Supadata 兜底 ----------
+    // ---------- 3. Supadata fallback ----------
     const fallback = await supadata(videoId);
     if (fallback?.success) {
       return {
@@ -73,8 +75,9 @@ var YTD_TRANSCRIPT_SOURCE = (() => {
       };
     }
 
-    // 走到这里说明播放器信息也没取到 —— 没有播放器信息就没有音频地址，
-    // 给 AI 按钮等于给一个必然失败的操作
+    // Reaching here means the player info was unavailable too. Without it
+    // there is no audio URL, so offering the AI button would offer an action
+    // that is guaranteed to fail
     return {
       source: "none",
       transcript: [],
@@ -85,7 +88,7 @@ var YTD_TRANSCRIPT_SOURCE = (() => {
     };
   }
 
-  /** 人工字幕通常比自动生成的准，优先选它。 */
+  /** Human captions are usually more accurate than auto-generated ones. */
   function pickTrack(tracks) {
     return tracks.find((track) => !track.isAutomatic) || tracks[0];
   }

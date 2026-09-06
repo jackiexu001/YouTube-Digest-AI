@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const transcribe = require("../asr/transcribe.js");
 
-/** 造一份分块计划，模拟 planChunks 的产出 */
+/** Builds a chunk plan the way planChunks would */
 const plan = (count) =>
   Array.from({ length: count }, (_, i) => ({
     requestedStart: i * 300,
@@ -14,7 +14,7 @@ const plan = (count) =>
     fragmentCount: 10,
   }));
 
-/** 一个总是成功的假识别器，记录调用顺序与并发峰值 */
+/** A fake transcriber that records call order and peak concurrency */
 function recorder({ failOn = [], rateLimitOn = [] } = {}) {
   const calls = [];
   let active = 0;
@@ -34,13 +34,13 @@ function recorder({ failOn = [], rateLimitOn = [] } = {}) {
         error.retryAfter = 546;
         throw error;
       }
-      if (failOn.includes(index)) throw new Error("识别失败");
-      return [{ start: 1, end: 2, text: `第${index}块` }];
+      if (failOn.includes(index)) throw new Error("transcription failed");
+      return [{ start: 1, end: 2, text: `chunk ${index}` }];
     },
   };
 }
 
-test("按计划逐块识别，结果带上各自的时间偏移", async () => {
+test("transcribes each planned chunk and offsets the results", async () => {
   const rec = recorder();
   const result = await transcribe.run({
     chunks: plan(3),
@@ -51,16 +51,16 @@ test("按计划逐块识别，结果带上各自的时间偏移", async () => {
   assert.equal(result.completed, 3);
   assert.equal(result.segments.length, 3);
   assert.equal(result.segments[0].start, 1);
-  assert.equal(result.segments[1].start, 291, "第二块的偏移没加对");
+  assert.equal(result.segments[1].start, 291, "the second chunk's offset was not applied");
 });
 
-test("并发不超过设定值，避免撞服务商限流", async () => {
+test("concurrency stays within the limit, to avoid provider rate limits", async () => {
   const rec = recorder();
   await transcribe.run({ chunks: plan(6), transcribeChunk: rec.run, concurrency: 2 });
-  assert.ok(rec.peakConcurrency <= 2, `并发峰值到了 ${rec.peakConcurrency}`);
+  assert.ok(rec.peakConcurrency <= 2, `peak concurrency reached ${rec.peakConcurrency}`);
 });
 
-test("每块完成就回调一次，界面可以边跑边显示", async () => {
+test("one callback per finished chunk, so the UI can show live progress", async () => {
   const progress = [];
   await transcribe.run({
     chunks: plan(3),
@@ -73,7 +73,7 @@ test("每块完成就回调一次，界面可以边跑边显示", async () => {
   assert.deepEqual(progress.map((p) => p.done).sort((a, b) => a - b), [1, 2, 3]);
 });
 
-test("单块失败不影响其余块，失败信息如实报告", async () => {
+test("one failed chunk does not stop the rest, and the failure is reported", async () => {
   const result = await transcribe.run({
     chunks: plan(3),
     transcribeChunk: recorder({ failOn: [1] }).run,
@@ -86,7 +86,7 @@ test("单块失败不影响其余块，失败信息如实报告", async () => {
   assert.equal(result.segments.length, 2);
 });
 
-test("撞到限流时停下来，明确报告还要等多久与已完成的进度", async () => {
+test("hitting a rate limit stops and reports both the wait and the progress", async () => {
   const result = await transcribe.run({
     chunks: plan(4),
     transcribeChunk: recorder({ rateLimitOn: [2] }).run,
@@ -95,25 +95,25 @@ test("撞到限流时停下来，明确报告还要等多久与已完成的进�
 
   assert.equal(result.rateLimited, true);
   assert.equal(result.retryAfterSeconds, 546);
-  // 已完成的必须保留，不能因为后面撞限流就把前面的成果丢掉
-  assert.ok(result.completed >= 2, `只完成了 ${result.completed} 块`);
+  // Finished work must survive; a later rate limit should not discard it
+  assert.ok(result.completed >= 2, `only ${result.completed} chunks finished`);
 });
 
-test("从断点继续时跳过已完成的块，不重复花钱", async () => {
+test("resuming skips finished chunks so they are not paid for twice", async () => {
   const rec = recorder();
   const result = await transcribe.run({
     chunks: plan(4),
     transcribeChunk: rec.run,
     concurrency: 2,
-    doneChunks: { 0: [{ start: 1, end: 2, text: "之前完成的" }], 1: [] },
+    doneChunks: { 0: [{ start: 1, end: 2, text: "done earlier" }], 1: [] },
   });
 
-  assert.deepEqual(rec.calls.sort(), [2, 3], "已完成的块被重复识别了");
+  assert.deepEqual(rec.calls.sort(), [2, 3], "already finished chunks were transcribed again");
   assert.equal(result.completed, 4);
-  assert.ok(result.segments.some((s) => s.text === "之前完成的"));
+  assert.ok(result.segments.some((s) => s.text === "done earlier"));
 });
 
-test("每完成一块就保存断点，中途退出不会前功尽弃", async () => {
+test("a checkpoint is saved per chunk, so quitting midway loses nothing", async () => {
   const saved = [];
   await transcribe.run({
     chunks: plan(3),
@@ -121,10 +121,10 @@ test("每完成一块就保存断点，中途退出不会前功尽弃", async ()
     concurrency: 1,
     onCheckpoint: (state) => saved.push(Object.keys(state.doneChunks).length),
   });
-  assert.deepEqual(saved, [1, 2, 3], "断点不是每块保存一次");
+  assert.deepEqual(saved, [1, 2, 3], "checkpoints are not saved once per chunk");
 });
 
-test("全部块都失败时明确返回失败，而不是给出一份空字幕", async () => {
+test("when every chunk fails it reports failure rather than empty captions", async () => {
   const result = await transcribe.run({
     chunks: plan(2),
     transcribeChunk: recorder({ failOn: [0, 1] }).run,
@@ -135,7 +135,7 @@ test("全部块都失败时明确返回失败，而不是给出一份空字幕",
   assert.equal(result.failed.length, 2);
 });
 
-test("被调用方取消时立刻停下，不再发起新的识别", async () => {
+test("cancelling stops immediately and starts no further work", async () => {
   const rec = recorder();
   const controller = { cancelled: false };
   const promise = transcribe.run({
@@ -147,13 +147,14 @@ test("被调用方取消时立刻停下，不再发起新的识别", async () =>
   setTimeout(() => { controller.cancelled = true; }, 8);
   const result = await promise;
 
-  assert.ok(result.cancelled, "没有报告已取消");
-  assert.ok(rec.calls.length < 6, `取消后仍然跑完了 ${rec.calls.length} 块`);
+  assert.ok(result.cancelled, "did not report cancellation");
+  assert.ok(rec.calls.length < 6, `kept going and finished ${rec.calls.length} chunks after cancelling`);
 });
 
-test("多并发下一旦撞限流，另一路也要立刻停手", async () => {
-  // 并发 1 时撞限流的那一路自己就退出了，这条保护只在多并发下才起作用。
-  // 不停手的话，剩下的块会一个接一个撞 429，白白消耗额度和时间。
+test("with several workers, one rate limit stops the others immediately", async () => {
+  // With one worker the failing path returns on its own, so this guard only
+  // matters with several. Without it the remaining chunks hit 429 one after
+  // another, wasting quota and time.
   const rec = recorder({ rateLimitOn: [0] });
   const result = await transcribe.run({
     chunks: plan(8),
@@ -164,6 +165,6 @@ test("多并发下一旦撞限流，另一路也要立刻停手", async () => {
   assert.equal(result.rateLimited, true);
   assert.ok(
     rec.calls.length <= 2,
-    `撞限流后又发起了 ${rec.calls.length - 2} 次识别`,
+    `started ${rec.calls.length - 2} more requests after the rate limit`,
   );
 });

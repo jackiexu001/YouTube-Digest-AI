@@ -1,7 +1,5 @@
 # YouTube Digest AI
 
-[English](README.md) | [简体中文](README.zh-CN.md)
-
 > **YouTube Digest AI** is a derivative of [YouTube Digest](https://github.com/zarazhangrui/youtube-digest)
 > by Zara Zhang, used under the MIT License. It keeps every original feature and adds
 > self-built AI captions for videos that have no subtitles at all.
@@ -17,8 +15,6 @@ Turn every YouTube video into a resource for deep learning. YouTube Digest bring
 - Keep control of your data with your own API keys, local Chrome storage, and no analytics or telemetry.
 
 YouTube Digest is a bring-your-own-key project installed locally from GitHub. It is not available through the Chrome Web Store, does not include API credits, and does not run a developer-operated server.
-
-![YouTube Digest demo](YouTube%20Digest%20demo.png)
 
 ## What's new in v2.0.0
 

@@ -9,7 +9,7 @@ const initBytes = () => {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 };
 
-test("从真实音频的 init 段读出片段总数、总时长和总字节", () => {
+test("reads fragment count, duration and byte total from a real init segment", () => {
   const index = mp4.parseInitSegment(initBytes());
 
   assert.equal(index.fragments.length, fixture.EXPECTED.fragmentCount);
@@ -17,44 +17,44 @@ test("从真实音频的 init 段读出片段总数、总时长和总字节", ()
   assert.equal(index.totalBytes, fixture.EXPECTED.totalBytes);
   assert.ok(
     Math.abs(index.totalSeconds - fixture.EXPECTED.totalSeconds) < 0.01,
-    `总时长 ${index.totalSeconds} 与真实值 ${fixture.EXPECTED.totalSeconds} 不符`,
+    `duration ${index.totalSeconds} does not match the real ${fixture.EXPECTED.totalSeconds}`,
   );
 });
 
-test("init 段的长度就是第一个片段的起始字节", () => {
+test("the init segment length is where the first fragment starts", () => {
   const index = mp4.parseInitSegment(initBytes());
   assert.equal(index.initLength, fixture.EXPECTED.initLength);
   assert.equal(index.fragments[0].start, fixture.EXPECTED.initLength);
 });
 
-test("片段首尾相接，没有空洞也没有重叠", () => {
+test("fragments meet end to end, with no gaps and no overlap", () => {
   const { fragments } = mp4.parseInitSegment(initBytes());
   for (let i = 1; i < fragments.length; i++) {
     assert.equal(
       fragments[i].start,
       fragments[i - 1].end + 1,
-      `第 ${i} 个片段的起点和上一个的终点对不上`,
+      `fragment ${i} does not start where the previous one ended`,
     );
     assert.ok(
       fragments[i].startTime > fragments[i - 1].startTime,
-      `第 ${i} 个片段的时间没有递增`,
+      `fragment ${i} does not advance in time`,
     );
   }
 });
 
-test("按时间窗口挑出对应的字节范围", () => {
+test("selects the byte range for a time window", () => {
   const index = mp4.parseInitSegment(initBytes());
   const window = mp4.selectWindow(index, { startSeconds: 60, durationSeconds: 120 });
 
-  // 命中的片段必须覆盖住请求的时间窗
-  assert.ok(window.startTime <= 60, "窗口起点晚于请求的 60 秒，开头会丢字");
-  assert.ok(window.endTime >= 180, "窗口终点早于请求的 180 秒，结尾会丢字");
-  assert.ok(window.byteStart >= index.initLength, "字节范围不该落进 init 段");
+  // The selected fragments must cover the requested window
+  assert.ok(window.startTime <= 60, "window starts after the requested 60s, clipping the opening words");
+  assert.ok(window.endTime >= 180, "window ends before the requested 180s, clipping the closing words");
+  assert.ok(window.byteStart >= index.initLength, "the byte range should not reach into the init segment");
   assert.ok(window.byteEnd > window.byteStart);
   assert.ok(window.fragmentCount > 0);
 });
 
-test("窗口超出视频末尾时收敛到最后一个片段，不越界", () => {
+test("a window past the end clamps to the last fragment instead of overrunning", () => {
   const index = mp4.parseInitSegment(initBytes());
   const window = mp4.selectWindow(index, { startSeconds: 850, durationSeconds: 300 });
 
@@ -62,40 +62,40 @@ test("窗口超出视频末尾时收敛到最后一个片段，不越界", () =>
   assert.ok(window.endTime <= index.totalSeconds + 0.01);
 });
 
-test("起点超过视频长度时返回空窗口，而不是抛错", () => {
+test("a start beyond the video returns an empty window rather than throwing", () => {
   const index = mp4.parseInitSegment(initBytes());
   const window = mp4.selectWindow(index, { startSeconds: 9999, durationSeconds: 60 });
   assert.equal(window.fragmentCount, 0);
 });
 
-test("按固定时长切分整个视频，段间带重叠", () => {
+test("splits the whole video into fixed-length chunks that overlap", () => {
   const index = mp4.parseInitSegment(initBytes());
   const chunks = mp4.planChunks(index, { chunkSeconds: 300, overlapSeconds: 10 });
 
-  // 856 秒按 300 秒切 → 3 段
+  // 856 seconds at 300 per chunk gives 3 chunks
   assert.equal(chunks.length, 3);
   assert.equal(chunks[0].startTime, 0);
 
   for (let i = 1; i < chunks.length; i++) {
-    // 后一段要往前多取一点，避免切口处的字被切碎
+    // Each chunk reaches back a little so words at the seam survive
     assert.ok(
       chunks[i].startTime < chunks[i - 1].endTime,
-      `第 ${i} 段与上一段之间没有重叠`,
+      `chunk ${i} does not overlap the previous one`,
     );
   }
-  // 最后一段必须盖到视频结尾
+  // The final chunk must reach the end of the video
   assert.ok(chunks[chunks.length - 1].endTime >= index.totalSeconds - 0.01);
 });
 
-test("不是分片 MP4 时明确报错，而不是返回一个空索引让上层误以为成功", () => {
+test("a non-fragmented MP4 raises a clear error instead of an empty index that looks like success", () => {
   const notMp4 = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]).buffer;
   assert.throws(() => mp4.parseInitSegment(notMp4), /sidx|MP4/i);
 });
 
 /**
- * 造一个最小的 init 段。真实样本里 firstOffset 恰好是 0、
- * reference_type 位恰好都是 0，这两条分支从没被执行过，
- * 只能用合成样本覆盖。
+ * Builds a minimal init segment. In the real sample firstOffset happens to
+ * be 0 and every reference_type bit happens to be 0, so those two branches
+ * never execute; only a synthetic sample can cover them.
  */
 function buildInitSegment({ firstOffset = 0, references }) {
   const refBytes = references.length * 12;
@@ -121,7 +121,7 @@ function buildInitSegment({ firstOffset = 0, references }) {
   view.setUint16(p, 0); p += 2;              // reserved
   view.setUint16(p, references.length); p += 2;
   for (const ref of references) {
-    // 最高位是 reference_type：1 表示这条指向另一个索引而非媒体
+    // Top bit is reference_type: 1 points at another index, not media
     view.setUint32(p, ((ref.type || 0) << 31) | ref.size); p += 4;
     view.setUint32(p, ref.duration); p += 4;
     view.setUint32(p, 0); p += 4;            // SAP
@@ -129,17 +129,17 @@ function buildInitSegment({ firstOffset = 0, references }) {
   return { buffer: buf, sidxEnd: sidxAt + sidxSize };
 }
 
-test("first_offset 不为 0 时，片段起点要跟着往后挪", () => {
+test("a non-zero first_offset shifts where fragments start", () => {
   const { buffer, sidxEnd } = buildInitSegment({
     firstOffset: 500,
     references: [{ size: 1000, duration: 2000 }],
   });
   const index = mp4.parseInitSegment(buffer);
-  // 起点 = sidx 结束位置 + first_offset，忽略 first_offset 会让所有字节范围偏移
+  // start = end of sidx + first_offset; ignoring it shifts every byte range
   assert.equal(index.fragments[0].start, sidxEnd + 500);
 });
 
-test("reference_type 位不会被算进片段长度里", () => {
+test("the reference_type bit is not counted as part of the fragment size", () => {
   const { buffer } = buildInitSegment({
     references: [
       { size: 1000, duration: 1000 },
@@ -147,7 +147,7 @@ test("reference_type 位不会被算进片段长度里", () => {
     ],
   });
   const index = mp4.parseInitSegment(buffer);
-  // 最高位是标志位，不掩掉的话长度会变成 2147485648 这种荒唐的数
+  // The top bit is a flag; unmasked the size becomes an absurd 2147485648
   assert.equal(index.fragments[1].end - index.fragments[1].start + 1, 2000);
-  assert.ok(index.totalBytes < 10000, `总字节 ${index.totalBytes} 明显不合理`);
+  assert.ok(index.totalBytes < 10000, `total bytes ${index.totalBytes} is clearly wrong`);
 });

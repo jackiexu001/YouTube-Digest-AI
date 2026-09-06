@@ -163,7 +163,7 @@ const YTD_OPTIONS = (() => {
     const normalizedLanguage = normalizeLanguage(language);
     const value = COPY[normalizedLanguage][key] ?? COPY.en[key] ?? "";
     if (typeof value === "function") return value(params);
-    // 文案里用 {name} 标出可替换的部分，例如服务商名和错误原因
+    // Copy marks replaceable parts as {name}, e.g. provider name or error reason
     return String(value).replace(/\{(\w+)\}/g, (match, name) =>
       Object.hasOwn(params, name) ? String(params[name]) : match,
     );
@@ -302,24 +302,27 @@ const YTD_OPTIONS = (() => {
 
 
   /**
-   * 根据选中的服务商算出整个表单该显示什么。
+   * Works out what the whole form should show for the selected provider.
    *
-   * 做成纯函数是为了能直接测：切换服务商牵扯模型名、地址、密钥、
-   * 帮助链接和按钮可用性五处联动，散在 DOM 操作里就没法验证了。
+   * Pure so it can be tested directly: switching providers moves the model
+   * name, the URL, the key, the help link and the button's enabled state
+   * together, and none of that is verifiable once it is spread across DOM
+   * manipulation.
    */
 
-  /** 服务商的显示名。品牌名照原样，「自定义」是描述性文字，跟界面语言走。 */
+  /** Display name. Brand names stay as-is; "Custom" is descriptive and follows the UI language. */
   function providerDisplayLabel({ providerId, language }) {
     if (providerId === "custom") return translate(language, "providerCustom");
     return providersApi.getProvider(providerId).label;
   }
 
   /**
-   * 需要代入服务商名的那几条文案。
+   * The strings that need the provider name substituted in.
    *
-   * 单独拿出来是因为它们和普通文案不同：普通文案只跟语言走，
-   * 这几条还跟当前选中的服务商走。混在一起处理会导致切换语言时
-   * 把服务商名冲掉，只剩字面的 {provider}。
+   * Kept separate because they differ from ordinary copy: ordinary copy
+   * follows the language only, these follow the selected provider as well.
+   * Handling them together means switching language wipes out the provider
+   * name and leaves a literal {provider}.
    */
   function providerCopy({ providerId, language }) {
     const provider = providerDisplayLabel({ providerId, language });
@@ -333,10 +336,11 @@ const YTD_OPTIONS = (() => {
 
 
   /**
-   * 语音识别那一块的表单状态。
+   * Form state for the speech recognition section.
    *
-   * 与文本模型分开：一个把声音变成文字，一个做概览和翻译，
-   * 用的是不同的服务、不同的密钥，切换互不影响。
+   * Separate from the text model: one turns audio into text, the other
+   * writes overviews and translations. Different services, different keys,
+   * and switching one never disturbs the other.
    */
   function asrFormState({ providerId, apiKeys = {}, savedModel = "" } = {}) {
     const provider = asrApi.getProvider(providerId);
@@ -347,7 +351,8 @@ const YTD_OPTIONS = (() => {
       apiKey: String(apiKeys[provider.id] || ""),
       keyUrl: provider.keyUrl,
       usdPerAudioHour: provider.usdPerAudioHour,
-      // 免费档限额用于事前提示；没有公布限额的服务商是 null，不编造
+      // Free-tier limits drive the up-front warning; null when a provider
+      // publishes none, rather than inventing a number
       freeTier: provider.freeTier || null,
     };
   }
@@ -364,12 +369,13 @@ const YTD_OPTIONS = (() => {
       providerId: provider.id,
       label: provider.label,
       model: String(savedModel || "").trim() || provider.defaultModel,
-      // 内置服务商的地址写死在代码里，不接受页面传入的值，
-      // 否则存储被改动后请求和密钥会被发到别处
+      // Built-in provider URLs are fixed in code and never taken from the
+      // page, or tampered storage could redirect requests and keys
       baseUrl: isCustom ? String(savedBaseUrl || "").trim() : provider.baseUrl,
       baseUrlEditable: isCustom,
       keyUrl: provider.keyUrl,
-      // 没有默认模型的服务商要告诉用户填什么，否则面对空框无从下手
+      // A provider with no default model must say what to type, or the
+      // user faces an empty box with no clue
       modelHint: provider.defaultModel ? "" : provider.modelHint || "",
       apiKey: String(apiKeys[provider.id] || ""),
       canListModels: providersApi.listModelsRequest({
@@ -381,10 +387,12 @@ const YTD_OPTIONS = (() => {
   }
 
   /**
-   * 向服务商查询可用模型。
+   * Asks a provider for its available models.
    *
-   * 各家接口随时可能改或下线，所以任何失败都返回可读原因而不是抛错——
-   * 界面要能退回手填模型名，不能因为列表拿不到就用不了这个服务商。
+   * These endpoints can change or disappear at any time, so every failure
+   * returns a readable reason instead of throwing. The UI must be able to
+   * fall back to a typed model name; a missing list should never make a
+   * provider unusable.
    */
   async function fetchModelList({
     providerId,
@@ -416,8 +424,9 @@ const YTD_OPTIONS = (() => {
 
 
   /**
-   * 自定义服务商的地址事先不知道，无法写进 manifest，
-   * 只能在保存时向 Chrome 申请。内置服务商的地址已声明，直接放行。
+   * A custom provider's URL is unknown ahead of time and cannot be declared
+   * in the manifest, so permission is requested from Chrome at save time.
+   * Built-in providers are already declared and pass straight through.
    */
   async function ensureEndpointPermission({ providerId, baseUrl, permissionsApi }) {
     if (providerId !== "custom") return { granted: true };
@@ -428,7 +437,7 @@ const YTD_OPTIONS = (() => {
     let origin;
     try {
       const parsed = new URL(trimmed);
-      // 密钥会随请求发出，明文 http 会在链路上暴露
+      // The key travels with the request; plain http exposes it in transit
       if (parsed.protocol !== "https:") {
         return { granted: false, reason: "baseUrlRequired" };
       }
@@ -469,9 +478,9 @@ const YTD_OPTIONS = (() => {
     const asrFields = doc.getElementById("asrFields");
     const aiCaptionsToggle = doc.getElementById("aiCaptionsEnabled");
     const aiCaptionsAutoToggle = doc.getElementById("aiCaptionsAutoStart");
-    // 识别服务商的密钥同样按服务商分开记，切换不会互相覆盖
+    // Recognition keys are also tracked per provider so switching never overwrites
     const asrKeysByProvider = {};
-    // 每个服务商的密钥单独记着，切换时不会互相覆盖
+    // Each provider's key is tracked separately so switching never overwrites
     const apiKeysByProvider = {};
     const saveStatus = doc.getElementById("saveStatus");
     const dataStatus = doc.getElementById("dataStatus");
@@ -516,7 +525,7 @@ const YTD_OPTIONS = (() => {
         );
       }
 
-      // 通用循环刷不到带服务商名的文案，语言切换后要再补一次
+      // The generic loop misses provider-substituted copy, so reapply after a language change
       if (providerSelect) applyProviderCopy();
       if (asrProviderSelect) {
         applyAsrCopy(asrApi.getProvider(asrProviderSelect.value).label);
@@ -526,7 +535,7 @@ const YTD_OPTIONS = (() => {
     }
 
 
-    /** 把选中服务商的默认值铺进表单。切换服务商时先把当前输入存回去。 */
+    /** Fills the form with the selected provider's defaults, saving the current input first. */
     function applyProvider(providerId, { savedModel = "", savedBaseUrl = "" } = {}) {
       const state = providerFormState({
         providerId,
@@ -546,7 +555,7 @@ const YTD_OPTIONS = (() => {
       applyProviderCopy();
     }
 
-    /** 把带服务商名的文案填进带 data-i18n-provider 标记的元素。 */
+    /** Writes provider-substituted copy into elements marked data-i18n-provider. */
     function applyProviderCopy() {
       const copy = providerCopy({
         providerId: providerSelect.value,
@@ -572,7 +581,8 @@ const YTD_OPTIONS = (() => {
       });
 
       if (result.ok) {
-        // 列表只作提示，输入框仍可手填 —— 新模型刚发布时列表往往还没有
+        // The list is only a hint; the field stays typeable, since a freshly
+        // released model is often missing from it
         let list = doc.getElementById("modelOptions");
         if (!list) {
           list = doc.createElement("datalist");
@@ -626,10 +636,10 @@ const YTD_OPTIONS = (() => {
     }
 
     function applyCaptionsToggle() {
-      // 关掉总开关时把相关字段一起收起来，避免让人以为还要填
+      // Hide the related fields with the master switch, so they do not look required
       const on = aiCaptionsToggle.checked;
       asrFields.hidden = !on;
-      // 总开关关掉时，自动生成也不该还能勾选
+      // Auto-start must not stay selectable once the master switch is off
       aiCaptionsAutoToggle.disabled = !on;
       if (!on) aiCaptionsAutoToggle.checked = false;
       aiCaptionsAutoToggle.closest(".checkbox-row").hidden = !on;
@@ -700,8 +710,8 @@ const YTD_OPTIONS = (() => {
         return;
       }
 
-      // 自定义服务商的地址不在 manifest 里，保存前要先拿到访问授权，
-      // 否则会存下一个必定失败的配置
+      // A custom URL is not in the manifest, so permission must be granted
+      // before saving, or the stored config is guaranteed to fail
       const permission = await ensureEndpointPermission({
         providerId: settings.provider,
         baseUrl: settings.aiBaseUrl,

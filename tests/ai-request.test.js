@@ -9,7 +9,7 @@ const settingsApi = require("../settings.js");
 
 const read = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
 
-/** 用真实的 providers.js 和 settings.js 加载 background.js，只把网络换成假的。 */
+/** Loads background.js with the real providers.js and settings.js, faking only the network. */
 function loadBackground({ storedSettings, respondWith }) {
   const calls = [];
   const listeners = { addListener() {} };
@@ -62,14 +62,14 @@ function loadBackground({ storedSettings, respondWith }) {
 
 const ask = { messages: [{ role: "user", content: "hi" }], maxTokens: 64 };
 
-test("选中 OpenAI 时请求发往 OpenAI，并用 OpenAI 的密钥", async () => {
+test("selecting OpenAI sends the request to OpenAI with the OpenAI key", async () => {
   const { api, calls } = loadBackground({
     storedSettings: {
       provider: "openai",
       aiModel: "gpt-5",
       aiApiKeys: { deepseek: "deepseek-key", openai: "openai-key" },
     },
-    respondWith: { body: { choices: [{ message: { content: "答案" } }] } },
+    respondWith: { body: { choices: [{ message: { content: "the answer" } }] } },
   });
 
   const result = await api.requestAiCompletion(ask);
@@ -78,10 +78,10 @@ test("选中 OpenAI 时请求发往 OpenAI，并用 OpenAI 的密钥", async () 
   assert.equal(calls[0].url, "https://api.openai.com/v1/chat/completions");
   assert.equal(calls[0].init.headers.Authorization, "Bearer openai-key");
   assert.equal(JSON.parse(calls[0].init.body).model, "gpt-5");
-  assert.equal(result.text, "答案");
+  assert.equal(result.text, "the answer");
 });
 
-test("DeepSeek 专属字段不会被发给 OpenAI", async () => {
+test("the DeepSeek-only field is never sent to OpenAI", async () => {
   const { api, calls } = loadBackground({
     storedSettings: { provider: "openai", aiModel: "gpt-5", aiApiKeys: { openai: "k" } },
     respondWith: { body: { choices: [{ message: { content: "x" } }] } },
@@ -90,14 +90,14 @@ test("DeepSeek 专属字段不会被发给 OpenAI", async () => {
   assert.equal(JSON.parse(calls[0].init.body).thinking, undefined);
 });
 
-test("选中 Anthropic 时用 x-api-key 而不是 Bearer", async () => {
+test("selecting Anthropic uses x-api-key rather than Bearer", async () => {
   const { api, calls } = loadBackground({
     storedSettings: {
       provider: "anthropic",
       aiModel: "claude-opus-5",
       aiApiKeys: { anthropic: "claude-key" },
     },
-    respondWith: { body: { content: [{ type: "text", text: "答案" }] } },
+    respondWith: { body: { content: [{ type: "text", text: "the answer" }] } },
   });
 
   const result = await api.requestAiCompletion(ask);
@@ -105,29 +105,29 @@ test("选中 Anthropic 时用 x-api-key 而不是 Bearer", async () => {
   assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
   assert.equal(calls[0].init.headers["x-api-key"], "claude-key");
   assert.equal(calls[0].init.headers.Authorization, undefined);
-  assert.equal(result.text, "答案");
+  assert.equal(result.text, "the answer");
 });
 
-test("选中 Gemini 时能取出回答，且密钥不进网址", async () => {
+test("selecting Gemini extracts the answer and keeps the key out of the URL", async () => {
   const { api, calls } = loadBackground({
     storedSettings: {
       provider: "gemini",
       aiModel: "gemini-3-pro",
       aiApiKeys: { gemini: "gemini-key" },
     },
-    respondWith: { body: { candidates: [{ content: { parts: [{ text: "答案" }] } }] } },
+    respondWith: { body: { candidates: [{ content: { parts: [{ text: "the answer" }] } }] } },
   });
 
   const result = await api.requestAiCompletion(ask);
 
   assert.doesNotMatch(calls[0].url, /gemini-key/);
   assert.equal(calls[0].init.headers["x-goog-api-key"], "gemini-key");
-  assert.equal(result.text, "答案");
+  assert.equal(result.text, "the answer");
 });
 
-test("没填当前服务商的密钥时报错，且错误信息说的是当前服务商", async () => {
+test("a missing key for the selected provider errors, naming that provider", async () => {
   const { api, calls } = loadBackground({
-    // 有 DeepSeek 的密钥，但当前选的是 OpenAI
+    // A DeepSeek key exists, but OpenAI is selected
     storedSettings: { provider: "openai", aiApiKeys: { deepseek: "deepseek-key" } },
   });
 
@@ -140,26 +140,26 @@ test("没填当前服务商的密钥时报错，且错误信息说的是当前�
       return true;
     },
   );
-  assert.equal(calls.length, 0, "缺密钥时不应发出任何请求");
+  assert.equal(calls.length, 0, "no request should go out when the key is missing");
 });
 
-test("服务商返回错误时，错误信息带上服务商名和它自己的说明", async () => {
+test("a provider error surfaces both the provider and its own message", async () => {
   const { api } = loadBackground({
     storedSettings: { provider: "anthropic", aiApiKeys: { anthropic: "k" } },
-    respondWith: { status: 429, body: { error: { message: "配额已用尽" } } },
+    respondWith: { status: 429, body: { error: { message: "quota exhausted" } } },
   });
 
   await assert.rejects(
     () => api.requestAiCompletion(ask),
     (error) => {
       assert.equal(error.status, 429);
-      assert.match(error.message, /配额已用尽/);
+      assert.match(error.message, /quota exhausted/);
       return true;
     },
   );
 });
 
-test("回答为空时报 EMPTY_AI_RESPONSE，不把空串当成答案", async () => {
+test("an empty answer raises EMPTY_AI_RESPONSE rather than passing a blank string", async () => {
   const { api } = loadBackground({
     storedSettings: { provider: "openai", aiApiKeys: { openai: "k" } },
     respondWith: { body: { choices: [{ message: { content: "   " } }] } },

@@ -3,33 +3,33 @@ const assert = require("node:assert/strict");
 
 const fetcher = require("../asr/fetcher.js");
 
-test("字节范围切成若干份，首尾相接不重不漏", () => {
+test("a byte range splits into parts that meet end to end", () => {
   const parts = fetcher.splitRange(100, 999, 4);
 
   assert.equal(parts.length, 4);
   assert.equal(parts[0].start, 100);
   assert.equal(parts[parts.length - 1].end, 999);
   for (let i = 1; i < parts.length; i++) {
-    assert.equal(parts[i].start, parts[i - 1].end + 1, `第 ${i} 份和上一份之间有缝`);
+    assert.equal(parts[i].start, parts[i - 1].end + 1, `part ${i} leaves a gap after the previous one`);
   }
   const covered = parts.reduce((n, p) => n + (p.end - p.start + 1), 0);
-  assert.equal(covered, 900, "覆盖的字节总数与请求的范围不符");
+  assert.equal(covered, 900, "covered byte count does not match the requested range");
 });
 
-test("范围比份数还小时不会产生空份", () => {
+test("a range smaller than the part count produces no empty parts", () => {
   const parts = fetcher.splitRange(0, 2, 8);
   assert.equal(parts.length, 3);
   for (const part of parts) {
-    assert.ok(part.end >= part.start, "出现了空的或倒置的范围");
+    assert.ok(part.end >= part.start, "produced an empty or inverted range");
   }
 });
 
-test("单字节范围也能处理", () => {
+test("a single-byte range works", () => {
   const parts = fetcher.splitRange(5, 5, 4);
   assert.deepEqual(parts, [{ start: 5, end: 5 }]);
 });
 
-test("分段请求带上正确的 Range 头", async () => {
+test("ranged requests carry the correct Range header", async () => {
   const seen = [];
   await fetcher.fetchRange("https://example.com/a", 10, 20, {
     fetchImpl: async (url, init) => {
@@ -40,8 +40,8 @@ test("分段请求带上正确的 Range 头", async () => {
   assert.deepEqual(seen, ["bytes=10-20"]);
 });
 
-test("并行下载后按顺序拼回原样，不会因为完成顺序而错位", async () => {
-  // 故意让后面的分片先返回，模拟真实的乱序完成
+test("parallel parts reassemble in order regardless of completion order", async () => {
+  // Deliberately return later parts first to mimic real out-of-order completion
   const fetchImpl = async (url, init) => {
     const [start, end] = init.headers.Range.replace("bytes=", "").split("-").map(Number);
     const size = end - start + 1;
@@ -60,11 +60,11 @@ test("并行下载后按顺序拼回原样，不会因为完成顺序而错位",
   assert.equal(result.byteLength, 1000);
   const bytes = new Uint8Array(result);
   for (let i = 0; i < 1000; i++) {
-    assert.equal(bytes[i], i % 251, `第 ${i} 个字节错位了`);
+    assert.equal(bytes[i], i % 251, `byte ${i} is out of place`);
   }
 });
 
-test("任何一份失败就整体失败，不返回残缺的数据", async () => {
+test("any failed part fails the whole request rather than returning partial data", async () => {
   const fetchImpl = async (url, init) => {
     if (init.headers.Range.startsWith("bytes=500")) {
       return { ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) };
@@ -78,14 +78,14 @@ test("任何一份失败就整体失败，不返回残缺的数据", async () =>
   );
 });
 
-test("init 段与片段字节拼成完整可解码的切片", () => {
+test("init segment and fragment bytes assemble into a decodable slice", () => {
   const init = new Uint8Array([1, 2, 3]);
   const body = new Uint8Array([4, 5]);
   const chunk = fetcher.assembleChunk(init, body);
   assert.deepEqual([...chunk], [1, 2, 3, 4, 5]);
 });
 
-test("并发数至少为 1，传 0 或负数不会导致死循环", async () => {
+test("concurrency is at least 1, so 0 or a negative value cannot loop forever", async () => {
   const result = await fetcher.fetchRangeParallel("https://x", 0, 9, {
     concurrency: 0,
     fetchImpl: async () => ({ ok: true, status: 206, arrayBuffer: async () => new ArrayBuffer(10) }),
@@ -93,33 +93,34 @@ test("并发数至少为 1，传 0 或负数不会导致死循环", async () => 
   assert.equal(result.byteLength, 10);
 });
 
-test("范围不能整除时，尾部字节不会被漏掉", () => {
-  // 1000 字节分 3 份除不尽。向下取整会漏掉最后一个字节，
-  // 音频少一字节就可能解码失败
+test("an indivisible range does not drop its trailing bytes", () => {
+  // 1000 bytes over 3 parts does not divide evenly. Rounding down loses the
+  // last byte, and audio missing one byte can fail to decode
   const parts = fetcher.splitRange(0, 999, 3);
   const covered = parts.reduce((n, p) => n + (p.end - p.start + 1), 0);
-  assert.equal(covered, 1000, "覆盖的字节数少于请求的范围");
+  assert.equal(covered, 1000, "covered fewer bytes than the requested range");
   assert.equal(parts[parts.length - 1].end, 999);
 });
 
-test("最后一份不会超出请求的范围", () => {
-  // 越界的 Range 请求会被服务器拒绝，或者拿回不属于本段的数据
+test("the last part never exceeds the requested range", () => {
+  // An out-of-range request is refused, or returns data from another part
   for (const [start, end, n] of [[0, 999, 3], [0, 10, 4], [100, 217, 7], [0, 5, 4]]) {
     const parts = fetcher.splitRange(start, end, n);
-    assert.equal(parts[parts.length - 1].end, end, `${start}-${end} 分 ${n} 份时末尾越界或不足`);
+    assert.equal(parts[parts.length - 1].end, end, `${start}-${end} over ${n} parts ends short or overruns`);
     assert.equal(parts[0].start, start);
     for (const part of parts) {
-      assert.ok(part.end <= end, `出现越界的分片 ${part.start}-${part.end}`);
+      assert.ok(part.end <= end, `part ${part.start}-${part.end} is out of range`);
     }
-    // 分片数不能超过请求的并发数，否则实际发出的请求比约定的多
-    assert.ok(parts.length <= n, `${start}-${end} 分 ${n} 份却切出了 ${parts.length} 份`);
+    // Part count must not exceed the requested concurrency, or more
+    // requests go out than agreed
+    assert.ok(parts.length <= n, `${start}-${end} over ${n} parts produced ${parts.length}`);
   }
 });
 
-test("并发数为 0、负数或非数字时都退回到 1 份", () => {
+test("a concurrency of 0, negative or non-numeric falls back to one part", () => {
   for (const bad of [0, -5, NaN, undefined, null]) {
     const parts = fetcher.splitRange(0, 99, bad);
-    assert.ok(parts.length >= 1, `并发数 ${bad} 时没有产生分片`);
+    assert.ok(parts.length >= 1, `concurrency ${bad} produced no parts`);
     assert.equal(parts[0].start, 0);
     assert.equal(parts[parts.length - 1].end, 99);
   }

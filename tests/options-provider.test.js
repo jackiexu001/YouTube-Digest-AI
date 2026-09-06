@@ -6,7 +6,7 @@ const path = require("node:path");
 const options = require("../options.js");
 const read = (f) => fs.readFileSync(path.resolve(__dirname, "..", f), "utf8");
 
-test("选中某个服务商时，表单填入它的默认模型、地址和密钥", () => {
+test("selecting a provider fills the form with its default model, URL and key", () => {
   const state = options.providerFormState({
     providerId: "openai",
     apiKeys: { deepseek: "d-key", openai: "o-key" },
@@ -17,11 +17,11 @@ test("选中某个服务商时，表单填入它的默认模型、地址和密�
   assert.equal(state.baseUrl, "https://api.openai.com/v1");
   assert.equal(state.apiKey, "o-key");
   assert.match(state.keyUrl, /^https:\/\//);
-  // 内置服务商的地址不给改，避免请求和密钥被指到别处
+  // Built-in URLs are not editable, so requests and keys cannot be redirected
   assert.equal(state.baseUrlEditable, false);
 });
 
-test("已保存的模型名优先于默认模型", () => {
+test("a saved model name takes precedence over the default", () => {
   const state = options.providerFormState({
     providerId: "openai",
     savedModel: "gpt-5.6-mini",
@@ -30,15 +30,15 @@ test("已保存的模型名优先于默认模型", () => {
   assert.equal(state.model, "gpt-5.6-mini");
 });
 
-test("切换服务商时各自的密钥不会互相串", () => {
+test("switching providers never crosses the saved keys", () => {
   const keys = { deepseek: "d-key", anthropic: "a-key" };
   assert.equal(options.providerFormState({ providerId: "deepseek", apiKeys: keys }).apiKey, "d-key");
   assert.equal(options.providerFormState({ providerId: "anthropic", apiKeys: keys }).apiKey, "a-key");
-  // 没填过的服务商是空的，不会借用别人的
+  // A provider never configured stays empty rather than borrowing another's key
   assert.equal(options.providerFormState({ providerId: "gemini", apiKeys: keys }).apiKey, "");
 });
 
-test("自定义服务商时地址框可编辑，并回填已保存的地址", () => {
+test("a custom provider makes the URL editable and restores the saved value", () => {
   const state = options.providerFormState({
     providerId: "custom",
     savedBaseUrl: "https://my-proxy.example.com/v1",
@@ -48,12 +48,12 @@ test("自定义服务商时地址框可编辑，并回填已保存的地址", ()
   assert.equal(state.baseUrl, "https://my-proxy.example.com/v1");
 });
 
-test("能否自动获取模型列表按服务商标记", () => {
+test("whether models can be fetched is marked per provider", () => {
   assert.equal(options.providerFormState({ providerId: "openai", apiKeys: {} }).canListModels, true);
   assert.equal(options.providerFormState({ providerId: "anthropic", apiKeys: {} }).canListModels, true);
 });
 
-test("获取模型成功时返回模型名列表", async () => {
+test("a successful fetch returns the list of model names", async () => {
   const result = await options.fetchModelList({
     providerId: "openai",
     baseUrl: "https://api.openai.com/v1",
@@ -69,23 +69,23 @@ test("获取模型成功时返回模型名列表", async () => {
   assert.deepEqual(result.models, ["gpt-5", "gpt-5-mini"]);
 });
 
-test("获取模型失败时给出可读原因，而不是抛错让页面崩掉", async () => {
+test("a failed fetch returns a readable reason instead of throwing and breaking the page", async () => {
   const httpError = await options.fetchModelList({
     providerId: "openai", baseUrl: "https://x", apiKey: "k",
-    fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "密钥无效" } }) }),
+    fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "invalid key" } }) }),
   });
   assert.equal(httpError.ok, false);
-  assert.match(httpError.reason, /密钥无效/);
+  assert.match(httpError.reason, /invalid key/);
 
   const networkError = await options.fetchModelList({
     providerId: "openai", baseUrl: "https://x", apiKey: "k",
-    fetchImpl: async () => { throw new Error("网络不通"); },
+    fetchImpl: async () => { throw new Error("network unreachable"); },
   });
   assert.equal(networkError.ok, false);
-  assert.match(networkError.reason, /网络不通/);
+  assert.match(networkError.reason, /network unreachable/);
 });
 
-test("没填密钥时不发获取模型的请求", async () => {
+test("no fetch goes out when the key is empty", async () => {
   let called = false;
   const result = await options.fetchModelList({
     providerId: "openai", baseUrl: "https://x", apiKey: "",
@@ -95,21 +95,21 @@ test("没填密钥时不发获取模型的请求", async () => {
   assert.equal(called, false);
 });
 
-test("设置页有服务商下拉、模型输入框、获取模型按钮和自定义地址框", () => {
+test("the options page has the provider select, model input, fetch button and custom URL field", () => {
   const html = read("options.html");
   assert.match(html, /<select[^>]+id="provider"/);
   assert.match(html, /id="aiModel"/);
   assert.match(html, /id="fetchModelsBtn"/);
   assert.match(html, /id="aiBaseUrl"/);
 
-  // 每个服务商都要在下拉里有一项
+  // Every provider needs an entry in the dropdown
   const providers = require("../providers.js");
   for (const p of providers.listProviders()) {
-    assert.match(html, new RegExp(`value="${p.id}"`), `下拉里缺少 ${p.id}`);
+    assert.match(html, new RegExp(`value="${p.id}"`), `the dropdown is missing ${p.id}`);
   }
 });
 
-test("保存自定义服务商前会先申请访问该地址的权限", async () => {
+test("saving a custom provider first requests permission for that address", async () => {
   const asked = [];
   const result = await options.ensureEndpointPermission({
     providerId: "custom",
@@ -124,7 +124,7 @@ test("保存自定义服务商前会先申请访问该地址的权限", async ()
   assert.deepEqual(asked, [{ origins: ["https://my-proxy.example.com/*"] }]);
 });
 
-test("用户拒绝授权时明确返回未授权，不留下跑不通的配置", async () => {
+test("a declined prompt returns not-granted rather than storing a broken config", async () => {
   const result = await options.ensureEndpointPermission({
     providerId: "custom",
     baseUrl: "https://my-proxy.example.com/v1",
@@ -133,7 +133,7 @@ test("用户拒绝授权时明确返回未授权，不留下跑不通的配置",
   assert.equal(result.granted, false);
 });
 
-test("已经授权过就不再重复弹窗", async () => {
+test("an already-granted origin does not prompt again", async () => {
   let requested = false;
   const result = await options.ensureEndpointPermission({
     providerId: "custom",
@@ -147,7 +147,7 @@ test("已经授权过就不再重复弹窗", async () => {
   assert.equal(requested, false);
 });
 
-test("内置服务商不需要运行时授权，地址已写进 manifest", async () => {
+test("built-in providers need no runtime prompt; their hosts are in the manifest", async () => {
   let requested = false;
   const result = await options.ensureEndpointPermission({
     providerId: "openai",
@@ -161,7 +161,7 @@ test("内置服务商不需要运行时授权，地址已写进 manifest", async
   assert.equal(requested, false);
 });
 
-test("自定义服务商没填地址时不通过，且不去申请权限", async () => {
+test("a custom provider with no URL fails without requesting permission", async () => {
   let requested = false;
   const result = await options.ensureEndpointPermission({
     providerId: "custom",
@@ -173,7 +173,7 @@ test("自定义服务商没填地址时不通过，且不去申请权限", async
   assert.equal(requested, false);
 });
 
-test("拒绝非 https 的自定义地址，避免密钥明文上路", async () => {
+test("a non-https custom URL is rejected, so the key never travels in the clear", async () => {
   const result = await options.ensureEndpointPermission({
     providerId: "custom",
     baseUrl: "http://insecure.example.com/v1",
@@ -182,22 +182,22 @@ test("拒绝非 https 的自定义地址，避免密钥明文上路", async () =
   assert.equal(result.granted, false);
 });
 
-test("manifest 声明了各内置服务商的访问权限，并允许运行时追加自定义地址", () => {
+test("the manifest declares each built-in host and allows adding a custom one at runtime", () => {
   const manifest = JSON.parse(read("manifest.json"));
   const hosts = manifest.host_permissions.join(" ");
   for (const domain of [
     "api.deepseek.com", "api.openai.com", "open.bigmodel.cn",
     "api.anthropic.com", "generativelanguage.googleapis.com",
   ]) {
-    assert.match(hosts, new RegExp(domain.replace(/\./g, "\\.")), `manifest 缺少 ${domain}`);
+    assert.match(hosts, new RegExp(domain.replace(/\./g, "\\.")), `the manifest is missing ${domain}`);
   }
   assert.ok(
     Array.isArray(manifest.optional_host_permissions),
-    "自定义服务商的地址事先未知，必须用 optional_host_permissions 在运行时申请",
+    "a custom URL is unknown ahead of time and needs optional_host_permissions",
   );
 });
 
-test("文案里的 {provider} 占位会被替换成服务商名", () => {
+test("the {provider} placeholder is replaced with the provider name", () => {
   const en = options.translate("en", "aiApiKeyLabel", { provider: "OpenAI" });
   assert.equal(en, "OpenAI API key");
   assert.doesNotMatch(en, /\{provider\}/);
@@ -207,137 +207,139 @@ test("文案里的 {provider} 占位会被替换成服务商名", () => {
   assert.doesNotMatch(zh, /\{provider\}/);
 });
 
-test("获取模型失败的文案会带上具体原因", () => {
-  const message = options.translate("zh-CN", "modelsFailed", { reason: "密钥无效" });
-  assert.match(message, /密钥无效/);
+test("the fetch-failure copy carries the specific reason", () => {
+  const message = options.translate("zh-CN", "modelsFailed", { reason: "invalid key" });
+  assert.match(message, /invalid key/);
   assert.doesNotMatch(message, /\{reason\}/);
 });
 
-test("模型输入框和获取按钮的横向排布有对应样式", () => {
+test("the model input and fetch button have styles for their shared row", () => {
   assert.match(read("options.css"), /\.model-row\s*\{/);
 });
 
-test("页面文案不再写死 DeepSeek 是唯一的 AI 服务商", () => {
+test("page copy no longer claims DeepSeek is the only AI provider", () => {
   const options = require("../options.js");
   for (const lang of ["en", "zh-CN"]) {
     const lede = options.translate(lang, "lede");
-    // 支持七家之后，说「只发送给 Supadata 和 DeepSeek」就是错的
-    assert.doesNotMatch(lede, /DeepSeek/, `${lang} 的开场白仍写死了 DeepSeek`);
+    // With several providers, "sent only to Supadata and DeepSeek" is false
+    assert.doesNotMatch(lede, /DeepSeek/, `${lang} lede still hardcodes DeepSeek`);
   }
 });
 
-test("设置页标题带上 AI，与扩展名一致", () => {
+test("the options page title carries AI, matching the extension name", () => {
   const options = require("../options.js");
   assert.match(options.translate("en", "pageTitle"), /YouTube Digest AI/);
   assert.match(options.translate("zh-CN", "pageTitle"), /YouTube Digest AI/);
 });
 
-test("设置页上显示的产品名是 YouTube Digest AI", () => {
+test("the product name shown on the options page is YouTube Digest AI", () => {
   const html = read("options.html");
   assert.match(html, /class="eyebrow">YouTube Digest AI</);
   assert.match(html, /<title>YouTube Digest AI Settings<\/title>/);
 });
 
-test("「自定义」是描述性文字，要跟着界面语言走；品牌名不翻译", () => {
+test("Custom is descriptive and follows the UI language; brands are not translated", () => {
   const options = require("../options.js");
   assert.match(options.translate("en", "providerCustom"), /Custom/);
-  assert.match(options.translate("zh-CN", "providerCustom"), /自定义/);
+  assert.match(options.translate("zh-CN", "providerCustom"), /\u81ea\u5b9a\u4e49/);
 
-  // 品牌名在两种语言下都是同一个写法
+  // Brand names are written the same in both languages
   const providers = require("../providers.js");
   const byId = Object.fromEntries(providers.listProviders().map((p) => [p.id, p]));
   assert.equal(byId.openai.label, "OpenAI");
   assert.equal(byId.anthropic.label, "Anthropic Claude");
-  // custom 的 label 不承载展示文案，展示交给 providerCustom
-  assert.doesNotMatch(byId.custom.label, /自定义/);
+  // The custom label is not display copy; providerCustom handles that
+  assert.doesNotMatch(byId.custom.label, /Custom \(/);
 });
 
-test("服务商下拉与输入框共用同一套外观", () => {
+test("the provider select shares one look with the inputs", () => {
   const css = read("options.css");
-  // select 必须和 input 一起被样式覆盖，否则会退回浏览器默认外观
+  // select must be styled alongside input, or it falls back to the browser default
   assert.match(css, /input,\s*\n\s*select,\s*\n\s*textarea\s*\{/);
-  // 关掉原生外观才能自定义样式
+  // Native appearance must be off before it can be styled
   assert.match(css, /appearance:\s*none/);
-  // 自绘的下拉箭头
+  // The hand-drawn dropdown arrow
   assert.match(css, /select\s*\{[^}]*background-image/s);
 });
 
-test("聚焦光晕用的是当前主题色，不是遗留的旧配色", () => {
+test("the focus ring uses the current theme colour, not a leftover one", () => {
   const css = read("options.css");
-  // 旧的赭红 rgba(200, 103, 79, ...) 应该已经跟着换色一起改掉
+  // The old terracotta rgba(200, 103, 79, ...) should have moved with the theme
   assert.doesNotMatch(css, /rgba\(200,\s*103,\s*79/);
 });
 
-test("服务商显示名：品牌名不翻译，「自定义」跟界面语言走", () => {
+test("display names: brands untranslated, Custom follows the UI language", () => {
   const options = require("../options.js");
   assert.equal(options.providerDisplayLabel({ providerId: "openai", language: "en" }), "OpenAI");
   assert.equal(options.providerDisplayLabel({ providerId: "openai", language: "zh-CN" }), "OpenAI");
   assert.match(options.providerDisplayLabel({ providerId: "custom", language: "en" }), /^Custom/);
-  assert.match(options.providerDisplayLabel({ providerId: "custom", language: "zh-CN" }), /^自定义/);
+  assert.match(options.providerDisplayLabel({ providerId: "custom", language: "zh-CN" }), /^\u81ea\u5b9a\u4e49/);
 });
 
-test("带服务商名的文案在两种语言下都不会残留占位符", () => {
+test("provider-substituted copy leaves no placeholder in either language", () => {
   const options = require("../options.js");
   for (const language of ["en", "zh-CN"]) {
     for (const providerId of ["deepseek", "openai", "custom", "gemini"]) {
       const copy = options.providerCopy({ providerId, language });
       for (const [key, value] of Object.entries(copy)) {
-        assert.doesNotMatch(value, /\{provider\}/, `${language}/${providerId} 的 ${key} 残留占位符`);
-        assert.notEqual(value, "", `${language}/${providerId} 的 ${key} 是空的`);
+        assert.doesNotMatch(value, /\{provider\}/, `${language}/${providerId} ${key} still has a placeholder`);
+        assert.notEqual(value, "", `${language}/${providerId} ${key} is empty`);
       }
     }
   }
 });
 
-test("英文界面下不会出现中文的「自定义」字样", () => {
+test("the English UI never shows the Chinese word for custom", () => {
   const options = require("../options.js");
   const copy = options.providerCopy({ providerId: "custom", language: "en" });
   for (const [key, value] of Object.entries(copy)) {
-    assert.doesNotMatch(value, /[一-龥]/, `英文界面的 ${key} 里混进了中文：${value}`);
+    assert.doesNotMatch(value, /[一-龥]/, `English copy for ${key} contains Chinese: ${value}`);
   }
 });
 
-test("带服务商名的文案用独立标记，不会被通用的语言刷新冲掉", () => {
+test("provider-substituted copy uses its own marker so the generic refresh cannot wipe it", () => {
   const html = read("options.html");
-  // 这四处需要代入服务商名，不能走通用的 data-i18n 循环，
-  // 否则切换语言时会被刷成字面的 {provider}
+  // These four need the provider substituted in and must stay out of the
+  // generic data-i18n loop, which would refresh them to a literal {provider}
   for (const id of ["aiApiKeyLabel", "aiHelpText", "aiKeyLink", "privacyNote"]) {
     const tag = html.match(new RegExp(`<[^>]*id="${id}"[^>]*>`));
-    assert.ok(tag, `找不到元素 ${id}`);
-    assert.doesNotMatch(tag[0], /\sdata-i18n="/, `${id} 不应使用通用的 data-i18n`);
-    assert.match(tag[0], /data-i18n-provider="/, `${id} 应使用 data-i18n-provider`);
+    assert.ok(tag, `element ${id} not found`);
+    assert.doesNotMatch(tag[0], /\sdata-i18n="/, `${id} should not use the generic data-i18n`);
+    assert.match(tag[0], /data-i18n-provider="/, `${id} should use data-i18n-provider`);
   }
 });
 
-test("自定义服务商要用户自己填模型名，所以带出提示", () => {
+test("a custom provider needs a typed model name, so it carries a hint", () => {
   const custom = options.providerFormState({ providerId: "custom", apiKeys: {} });
   assert.equal(custom.model, "");
-  assert.ok(custom.modelHint, "自定义服务商没有默认模型，必须给提示");
+  assert.ok(custom.modelHint, "a custom provider has no default model and must offer a hint");
 
   const openai = options.providerFormState({ providerId: "openai", apiKeys: {} });
-  assert.equal(openai.modelHint, "", "有默认模型的服务商不需要提示");
+  assert.equal(openai.modelHint, "", "a provider with a default model needs no hint");
 });
 
-test("全项目没有残留换色前的赭红", () => {
-  // 换主题色时最容易漏掉两类地方：注入到 YouTube 页面的内联样式，
-  // 以及写成 rgba 的阴影——它们都绕过了 CSS 变量
+test("no pre-rebrand terracotta remains anywhere", () => {
+  // Two places are easiest to miss when changing the theme: inline styles
+  // injected into the YouTube page, and shadows written as rgba. Both bypass
+  // the CSS variables.
   const files = ["content.js", "sidepanel.js", "sidepanel.css", "options.js", "options.css"];
   const old = /#c8674f|#b25742|#ad523e|rgba\(\s*200,\s*103,\s*79/i;
   for (const file of files) {
-    assert.doesNotMatch(read(file), old, `${file} 里还有换色前的赭红`);
+    assert.doesNotMatch(read(file), old, `${file} still contains pre-rebrand terracotta`);
   }
 });
 
-test("注入到 YouTube 页面的按钮用的是本项目的橙色", () => {
+test("buttons injected into the YouTube page use this project's orange", () => {
   const content = read("content.js");
-  assert.match(content, /#c2410c/, "注入按钮没有使用主题强调色");
-  assert.match(content, /#9a3412/, "注入按钮缺少悬停色");
+  assert.match(content, /#ef6826/, "injected buttons do not use the theme accent");
+  assert.match(content, /#d9530f/, "injected buttons have no hover colour");
 });
 
-test("阴影和遮罩用的是中性色，不是换色前的暖褐调", () => {
-  // 暖褐色阴影混在中性灰界面里会发脏，这类值不走 CSS 变量所以最容易漏
+test("shadows and scrims use neutral tones, not the pre-rebrand warm brown", () => {
+  // Warm brown shadows look dirty over a neutral grey UI, and these values
+  // bypass the CSS variables, so they are the easiest to miss
   const warm = /rgba\(\s*(46,\s*42,\s*36|50,\s*42,\s*32)|#60483f/i;
   for (const file of ["content.js", "sidepanel.css", "options.css"]) {
-    assert.doesNotMatch(read(file), warm, `${file} 里还有换色前的暖褐调`);
+    assert.doesNotMatch(read(file), warm, `${file} still contains pre-rebrand warm brown`);
   }
 });

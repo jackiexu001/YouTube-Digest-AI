@@ -1,9 +1,10 @@
 /**
- * AI 字幕在侧边栏里的提示文案。
+ * Copy for the AI captions prompt in the side panel.
  *
- * 做成纯函数是因为这些文案关系到钱：说错时长、算错费用、
- * 漏掉额度提示，用户就会在不知情的情况下花钱或跑到一半失败。
- * 这类东西必须能直接断言，而不是靠肉眼看界面。
+ * Kept as pure functions because this copy is about money: a wrong duration,
+ * a miscalculated cost, or a missing quota warning means someone spends
+ * without knowing, or a run dies halfway. That has to be assertable rather
+ * than eyeballed in the UI.
  */
 var YTD_CAPTION_PROMPT = (() => {
   function clock(seconds) {
@@ -17,12 +18,12 @@ var YTD_CAPTION_PROMPT = (() => {
     const total = Math.max(0, Math.round(seconds));
     const m = Math.floor(total / 60);
     const s = total % 60;
-    return m ? `${m} 分 ${s} 秒` : `${s} 秒`;
+    return m ? `${m} min ${s} sec` : `${s} sec`;
   }
 
   function money(usd) {
-    // 低于一分钱的也要显示成 $0.01 而不是 $0.00，
-    // 否则看起来像免费
+    // Anything under a cent still shows as $0.01 rather than $0.00,
+    // which would read as free
     const value = Math.max(0.01, Number(usd) || 0);
     return `$${value.toFixed(2)}`;
   }
@@ -33,10 +34,10 @@ var YTD_CAPTION_PROMPT = (() => {
     let warning = "";
     if (freeTier?.secondsPerHour) {
       const share = Math.round((durationSeconds / freeTier.secondsPerHour) * 100);
-      parts.push(`会用掉 ${provider} 本小时免费额度的 ${share}%`);
+      parts.push(`uses ${share}% of this hour\u0027s free ${provider} allowance`);
       if (durationSeconds > freeTier.secondsPerHour) {
-        // 提前说清楚，而不是让用户跑到一半才撞限流
-        warning = `这个视频超过 ${provider} 单次免费额度的上限，会分两次或多次完成。中途会保存进度，额度恢复后可以接着跑。`;
+        // Say it up front instead of letting the run hit the limit halfway
+        warning = `This video is longer than one ${provider} free-tier window, so it will take two or more runs. Progress is saved, and you can resume once the allowance refills.`;
       }
     }
 
@@ -45,20 +46,20 @@ var YTD_CAPTION_PROMPT = (() => {
       warning,
       canStart: !!hasKey,
       action: hasKey ? "start" : "settings",
-      actionLabel: hasKey ? "生成 AI 字幕" : `在设置中填写 ${provider} 密钥`,
+      actionLabel: hasKey ? "Generate AI captions" : `Add your ${provider} key in Settings`,
     };
   }
 
   function buildProgress({ completed, total, chunkSeconds }) {
-    return `正在识别 ${completed}/${total} 段 · 已完成 ${clock(completed * chunkSeconds)}`;
+    return `Transcribing ${completed}/${total} chunks - ${clock(completed * chunkSeconds)} done`;
   }
 
   function buildRateLimited({ completed, total, chunkSeconds, retryAfterSeconds }) {
     const minutes = Math.max(1, Math.round((retryAfterSeconds || 0) / 60));
     return {
       message:
-        `已完成 ${completed}/${total} 段（0:00–${clock(completed * chunkSeconds)} 已可阅读）。` +
-        `额度约 ${minutes} 分钟后恢复。`,
+        `${completed}/${total} chunks done (0:00-${clock(completed * chunkSeconds)} is readable now). ` +
+        `The allowance refills in about ${minutes} min.`,
       canResume: true,
       retryAfterSeconds: retryAfterSeconds || null,
     };

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const settings = require("../settings.js");
 
-test("语音识别的设置与文本模型完全分开", () => {
+test("speech recognition settings are fully separate from the text model", () => {
   const normalized = settings.normalize({
     provider: "openai",
     aiApiKeys: { openai: "text-key" },
@@ -13,28 +13,29 @@ test("语音识别的设置与文本模型完全分开", () => {
 
   assert.equal(normalized.provider, "openai");
   assert.equal(normalized.asrProvider, "groq");
-  // 两套密钥互不影响：文本模型换成 OpenAI 不该动到识别用的 Groq 密钥
+  // The two key sets are independent: switching the text model to OpenAI
+  // must not touch the Groq key used for recognition
   assert.equal(settings.activeApiKey(normalized), "text-key");
   assert.equal(settings.activeAsrApiKey(normalized), "groq-key");
 });
 
-test("语音识别默认用 Groq", () => {
+test("speech recognition defaults to Groq", () => {
   const normalized = settings.normalize({});
   assert.equal(normalized.asrProvider, "groq");
   assert.equal(normalized.asrModel, "whisper-large-v3-turbo");
 });
 
-test("未知的识别服务商回落到 Groq", () => {
-  const normalized = settings.normalize({ asrProvider: "不存在的" });
+test("an unknown recognition provider falls back to Groq", () => {
+  const normalized = settings.normalize({ asrProvider: "no-such-provider" });
   assert.equal(normalized.asrProvider, "groq");
 });
 
-test("选择 OpenAI Whisper 时用它自己的默认模型", () => {
+test("choosing OpenAI Whisper uses its own default model", () => {
   const normalized = settings.normalize({ asrProvider: "openai" });
   assert.equal(normalized.asrModel, "whisper-1");
 });
 
-test("识别密钥按服务商分开存，切换不会串", () => {
+test("recognition keys are stored per provider and never cross over", () => {
   const normalized = settings.normalize({
     asrProvider: "openai",
     asrApiKeys: { groq: "  groq-key  ", openai: "openai-key" },
@@ -43,24 +44,25 @@ test("识别密钥按服务商分开存，切换不会串", () => {
   assert.equal(settings.activeAsrApiKey(normalized), "openai-key");
 });
 
-test("AI 字幕总开关默认打开，可以关掉", () => {
+test("the AI captions master switch is on by default and can be turned off", () => {
   assert.equal(settings.normalize({}).aiCaptionsEnabled, true);
   assert.equal(settings.normalize({ aiCaptionsEnabled: false }).aiCaptionsEnabled, false);
 });
 
-test("没配识别密钥时 activeAsrApiKey 返回空串而不是 undefined", () => {
+test("activeAsrApiKey returns an empty string, not undefined, when unset", () => {
   assert.equal(settings.activeAsrApiKey(settings.normalize({})), "");
   assert.equal(settings.activeAsrApiKey({}), "");
 });
 
-test("自动生成默认关闭，必须用户主动打开", () => {
-  // 这一步会真实花钱，默认自动开始等于替用户做了花钱的决定
+test("auto-start is off by default and must be turned on deliberately", () => {
+  // This step costs real money; starting by default would make a spending
+  // decision on the user's behalf
   assert.equal(settings.normalize({}).aiCaptionsAutoStart, false);
   assert.equal(settings.normalize({ aiCaptionsAutoStart: true }).aiCaptionsAutoStart, true);
 });
 
-test("总开关关掉时，自动生成也必须跟着失效", () => {
-  // 否则会出现「AI 字幕已关闭，却仍然自动扣费」这种自相矛盾的状态
+test("auto-start must switch off with the master switch", () => {
+  // Otherwise you get the contradictory state of captions off but still charging
   const off = settings.normalize({ aiCaptionsEnabled: false, aiCaptionsAutoStart: true });
   assert.equal(off.aiCaptionsAutoStart, false);
 });

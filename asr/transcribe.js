@@ -1,21 +1,21 @@
 /**
- * AI 字幕的调度层：控制并发、保存断点、处理限流。
+ * Scheduling layer for AI captions: concurrency, checkpoints, rate limits.
  *
- * 不负责下载和识别本身——那两件事由调用方以函数形式传进来，
- * 这样调度逻辑可以脱离网络单独测试。
+ * It does not download or recognise anything itself. Those are passed in as
+ * functions, which lets the scheduling logic be tested without a network.
  */
 var YTD_TRANSCRIBE = (() => {
   const mergeApi =
     typeof YTD_MERGE !== "undefined" ? YTD_MERGE : require("./merge.js");
 
   /**
-   * @param {Object[]} chunks planChunks 的产出
-   * @param {Function} transcribeChunk (chunk, index) => segments，由调用方提供
-   * @param {number} concurrency 同时进行的块数
-   * @param {Object} doneChunks 断点：已完成的块 { index: segments }
-   * @param {Function} onChunkDone 每块完成后的回调，用于边跑边显示
-   * @param {Function} onCheckpoint 每块完成后保存断点
-   * @param {Function} shouldStop 返回 true 则停止发起新的识别
+   * @param {Object[]} chunks output of planChunks
+   * @param {Function} transcribeChunk (chunk, index) => segments, supplied by the caller
+   * @param {number} concurrency how many chunks run at once
+   * @param {Object} doneChunks checkpoint of finished chunks, { index: segments }
+   * @param {Function} onChunkDone called per finished chunk, for live progress
+   * @param {Function} onCheckpoint persists the checkpoint after each chunk
+   * @param {Function} shouldStop return true to stop starting new work
    */
   async function run({
     chunks,
@@ -32,7 +32,7 @@ var YTD_TRANSCRIBE = (() => {
     let retryAfterSeconds = null;
     let cancelled = false;
 
-    // 断点里已有的块直接跳过，不重复花钱
+    // Chunks already in the checkpoint are skipped so they are not paid for twice
     const pending = chunks
       .map((chunk, index) => ({ chunk, index }))
       .filter((item) => !Object.hasOwn(results, item.index));
@@ -40,7 +40,7 @@ var YTD_TRANSCRIBE = (() => {
     let cursor = 0;
     const worker = async () => {
       while (cursor < pending.length) {
-        // 撞到限流后不再发起新的识别：继续发只会拿到更多的 429
+        // After a rate limit, stop starting new work: more requests only earn more 429s
         if (rateLimited || cancelled) return;
         if (shouldStop && shouldStop()) {
           cancelled = true;
@@ -72,7 +72,7 @@ var YTD_TRANSCRIBE = (() => {
     const workerCount = Math.max(1, Math.min(concurrency, pending.length || 1));
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
-    // 把各块结果按块的实际起始时间拼回一条时间轴
+    // Stitch the per-chunk results back into one timeline by real start time
     const merged = mergeApi.mergeChunks(
       Object.entries(results).map(([index, segments]) => ({
         offset: chunks[Number(index)]?.startTime ?? 0,

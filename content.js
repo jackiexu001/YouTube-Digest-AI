@@ -244,7 +244,7 @@ function createDigestButton() {
     height: 36px;
     border: none;
     border-radius: 18px;
-    background: #c2410c;
+    background: #ef6826;
     color: white;
     font-family: "Roboto", "Arial", sans-serif;
     font-size: 14px;
@@ -262,12 +262,12 @@ function createDigestButton() {
 
   // Hover effects
   digestButton.addEventListener("mouseenter", () => {
-    digestButton.style.background = "#9a3412";
+    digestButton.style.background = "#d9530f";
     digestButton.style.transform = "scale(1.02)";
   });
 
   digestButton.addEventListener("mouseleave", () => {
-    digestButton.style.background = "#c2410c";
+    digestButton.style.background = "#ef6826";
     digestButton.style.transform = "scale(1)";
   });
 
@@ -455,7 +455,7 @@ function injectNoteButton() {
     display: flex;
     align-items: center;
     padding: 9px 16px;
-    background: #c2410c;
+    background: #ef6826;
     color: white;
     border: none;
     border-radius: 999px;
@@ -492,13 +492,13 @@ function injectNoteButton() {
 
   // Hover effect — lift slightly
   noteButton.addEventListener("mouseenter", () => {
-    noteButton.style.background = "#9a3412";
+    noteButton.style.background = "#d9530f";
     noteButton.style.boxShadow = "0 6px 18px rgba(0,0,0,0.35)";
     noteButton.style.transform = "translateY(-1px)";
   });
 
   noteButton.addEventListener("mouseleave", () => {
-    noteButton.style.background = "#c2410c";
+    noteButton.style.background = "#ef6826";
     noteButton.style.boxShadow = "0 4px 14px rgba(0,0,0,0.3)";
     noteButton.style.transform = "translateY(0)";
   });
@@ -624,7 +624,7 @@ async function saveCurrentNote() {
   setTimeout(() => {
     if (noteButton) {
       noteButton.innerHTML = originalContent;
-      noteButton.style.background = "#c2410c";
+      noteButton.style.background = "#ef6826";
       noteButton.style.pointerEvents = "auto";
     }
   }, 2000);
@@ -641,11 +641,11 @@ function showNoteSavedToast(note) {
   const toast = document.createElement("div");
   toast.id = "ytd-note-toast";
   toast.innerHTML = `
-    <div style="font-weight: 700; margin-bottom: 6px; color: #c2410c;">Note saved</div>
+    <div style="font-weight: 700; margin-bottom: 6px; color: #ef6826;">Note saved</div>
     <div style="font-size: 12px; color: #6b6258; margin-bottom: 8px;">${escapeHtmlForContent(note.timestamp)} — ${escapeHtmlForContent(note.videoTitle)}</div>
     <div style="font-size: 13px; line-height: 1.55; color: #2e2a24;">"${escapeHtmlForContent(note.text)}"</div>
     <div style="margin-top: 10px; font-size: 11px;">
-      <a href="${escapeHtmlForContent(note.timestampedUrl)}" style="color: #c2410c; font-weight: 600; text-decoration: none;">Copy link</a>
+      <a href="${escapeHtmlForContent(note.timestampedUrl)}" style="color: #ef6826; font-weight: 600; text-decoration: none;">Copy link</a>
     </div>
   `;
 

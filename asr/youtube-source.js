@@ -1,15 +1,19 @@
 /**
- * 从 YouTube 取音频地址和原生字幕。
+ * Gets audio URLs and native captions from YouTube.
  *
- * 背景：YouTube 网页版已经转到 SABR，播放器响应里的格式列表既没有直连地址
- * 也没有加密串——问题不是地址被加密，是根本没有地址。所以「移植签名解密」
- * 这条常见路线已经失效。
+ * Background: the YouTube web client has moved to SABR. Its player response
+ * lists audio formats with neither a direct URL nor a signature cipher, so
+ * the problem is not that URLs are encrypted, it is that there are no URLs.
+ * That makes the usual "port ytdl-core's signature decryption" route dead.
  *
- * 可行的做法是换一个客户端身份去问官方接口：VISIONOS 和 IOS 这类客户端
- * 仍然返回普通直连地址，且不需要签名解密。前提是带上页面里的匿名 visitorData。
+ * What does work is asking the official endpoint as a different client:
+ * VISIONOS and IOS still return plain direct URLs and need no signature
+ * decryption, as long as the page's anonymous visitorData comes along.
  *
- * 重要：这个请求必须在页面自己的环境里发（world: "MAIN"）。扩展自己发会带上
- * Origin: chrome-extension://...，YouTube 直接返回 403，而浏览器不允许扩展伪造 Origin。
+ * Important: this request must be issued from the page's own context
+ * (world: "MAIN"). Sent by the extension it carries
+ * Origin: chrome-extension://..., which YouTube answers with 403, and a
+ * browser will not let an extension forge Origin.
  */
 var YTD_YOUTUBE_SOURCE = (() => {
   const CLIENTS = Object.freeze([
@@ -44,8 +48,8 @@ var YTD_YOUTUBE_SOURCE = (() => {
     return {
       url: "/youtubei/v1/player",
       method: "POST",
-      // 匿名 visitorData 已经够用，不需要用户的登录 Cookie，
-      // 也就不必把这些请求和用户的 YouTube 账号绑在一起
+      // Anonymous visitorData is enough, so no login cookie is needed and
+      // these requests are never tied to the user's YouTube account
       credentials: "omit",
       headers: {
         "Content-Type": "application/json",
@@ -72,10 +76,12 @@ var YTD_YOUTUBE_SOURCE = (() => {
   }
 
   /**
-   * 挑一个用来识别的音频流。
+   * Picks an audio stream for recognition.
    *
-   * 优先最低码率的 m4a：识别不需要高音质，而 m4a 的 sidx 索引表结构简单，
-   * 纯字节拼接就能按时间切片。webm/opus 要另写 EBML 解析，所以放在后面。
+   * Prefers the lowest-bitrate m4a: recognition does not need fidelity, and
+   * m4a carries a simple sidx index that allows time-based slicing by plain
+   * byte concatenation. webm/opus would need a separate EBML parser, so it
+   * ranks lower even when its bitrate is smaller.
    */
   function pickAudioFormat(playerResponse) {
     const formats = playerResponse?.streamingData?.adaptiveFormats;
@@ -110,13 +116,13 @@ var YTD_YOUTUBE_SOURCE = (() => {
       captionTracks: tracks.map((track) => ({
         languageCode: String(track?.languageCode || ""),
         baseUrl: String(track?.baseUrl || ""),
-        // kind === "asr" 表示是 YouTube 自动生成的，质量通常不如人工字幕
+        // kind === "asr" means auto-generated, usually worse than a human track
         isAutomatic: track?.kind === "asr",
       })),
     };
   }
 
-  /** json3 是带时间戳的结构化格式，比默认的 XML 好解析。 */
+  /** json3 is the timestamped structured format, easier than the default XML. */
   function captionUrl(baseUrl) {
     const separator = String(baseUrl).includes("?") ? "&" : "?";
     return `${baseUrl}${separator}fmt=json3`;

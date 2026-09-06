@@ -3,110 +3,110 @@ const assert = require("node:assert/strict");
 
 const merge = require("../asr/merge.js");
 
-test("给每段字幕加上它所属分块的时间偏移", () => {
+test("applies each chunk's time offset to its segments", () => {
   const shifted = merge.offsetSegments(
-    [{ start: 0, end: 2, text: "第一句" }, { start: 2, end: 4, text: "第二句" }],
+    [{ start: 0, end: 2, text: "first line" }, { start: 2, end: 4, text: "second line" }],
     300,
   );
   assert.deepEqual(shifted, [
-    { start: 300, end: 302, text: "第一句" },
-    { start: 302, end: 304, text: "第二句" },
+    { start: 300, end: 302, text: "first line" },
+    { start: 302, end: 304, text: "second line" },
   ]);
 });
 
-test("空白字幕会被丢掉，不留下占位的空行", () => {
+test("blank segments are dropped instead of leaving empty lines", () => {
   const shifted = merge.offsetSegments(
-    [{ start: 0, end: 1, text: "  " }, { start: 1, end: 2, text: "有内容" }],
+    [{ start: 0, end: 1, text: "  " }, { start: 1, end: 2, text: "has content" }],
     0,
   );
   assert.equal(shifted.length, 1);
-  assert.equal(shifted[0].text, "有内容");
+  assert.equal(shifted[0].text, "has content");
 });
 
-test("按重叠区中点取舍，消掉切口处的重复", () => {
-  // 两块在 100–110 秒重叠，同一句话被两边都识别到了
+test("splits at the overlap midpoint to remove seam duplicates", () => {
+  // The chunks overlap over 100-110s and both transcribed the same line
   const merged = merge.mergeChunks([
     { offset: 0, segments: [
-      { start: 95, end: 99, text: "重叠前" },
-      { start: 103, end: 106, text: "重叠里靠后" },
+      { start: 95, end: 99, text: "before overlap" },
+      { start: 103, end: 106, text: "later in overlap" },
     ]},
     { offset: 100, segments: [
-      { start: 2, end: 5, text: "重叠里靠前" },
-      { start: 12, end: 15, text: "重叠后" },
+      { start: 2, end: 5, text: "earlier in overlap" },
+      { start: 12, end: 15, text: "after overlap" },
     ]},
   ]);
 
   const texts = merged.map((s) => s.text);
-  assert.deepEqual(texts, ["重叠前", "重叠里靠后", "重叠后"]);
+  assert.deepEqual(texts, ["before overlap", "later in overlap", "after overlap"]);
 });
 
-test("合并后时间严格递增，不会倒退", () => {
+test("merged timestamps increase strictly and never go backwards", () => {
   const merged = merge.mergeChunks([
-    { offset: 0, segments: [{ start: 0, end: 5, text: "甲" }, { start: 290, end: 299, text: "乙" }] },
-    { offset: 290, segments: [{ start: 0, end: 9, text: "乙重复" }, { start: 20, end: 25, text: "丙" }] },
+    { offset: 0, segments: [{ start: 0, end: 5, text: "A" }, { start: 290, end: 299, text: "B" }] },
+    { offset: 290, segments: [{ start: 0, end: 9, text: "B repeated" }, { start: 20, end: 25, text: "C" }] },
   ]);
 
   for (let i = 1; i < merged.length; i++) {
     assert.ok(
       merged[i].start >= merged[i - 1].start,
-      `第 ${i} 条字幕的时间比上一条早，播放器会跳来跳去`,
+      `caption ${i} starts before the previous one, making the player jump`,
     );
   }
 });
 
-test("相邻且文字完全相同的字幕只保留一条", () => {
+test("adjacent segments with identical text collapse to one", () => {
   const merged = merge.mergeChunks([
     { offset: 0, segments: [
-      { start: 10, end: 12, text: "同一句话" },
-      { start: 12, end: 14, text: "同一句话" },
+      { start: 10, end: 12, text: "same line" },
+      { start: 12, end: 14, text: "same line" },
     ]},
   ]);
   assert.equal(merged.length, 1);
 });
 
-test("只有一块时原样返回，不做多余处理", () => {
+test("a single chunk passes through unchanged", () => {
   const merged = merge.mergeChunks([
-    { offset: 0, segments: [{ start: 1, end: 2, text: "甲" }, { start: 3, end: 4, text: "乙" }] },
+    { offset: 0, segments: [{ start: 1, end: 2, text: "A" }, { start: 3, end: 4, text: "B" }] },
   ]);
   assert.equal(merged.length, 2);
   assert.equal(merged[0].start, 1);
 });
 
-test("某一块识别失败时，相邻块不能把重叠区一起丢掉，否则会出现空洞", () => {
-  // 偏移按 planChunks 的实际产出：后续块都往前多取 10 秒
+test("when a chunk fails, its neighbour must not discard the overlap and leave a hole", () => {
+  // Offsets match what planChunks produces: later chunks reach back 10s
   const merged = merge.mergeChunks([
-    { offset: 0, segments: [{ start: 1, end: 2, text: "甲" }] },
+    { offset: 0, segments: [{ start: 1, end: 2, text: "A" }] },
     { offset: 290, segments: [] },
-    { offset: 590, segments: [{ start: 1, end: 2, text: "丙" }] },
+    { offset: 590, segments: [{ start: 1, end: 2, text: "C" }] },
   ]);
 
-  // 「丙」落在本该归上一块的重叠区里，但上一块是空的，
-  // 若照常裁掉就没人认领这段话了
-  assert.deepEqual(merged.map((s) => s.text), ["甲", "丙"]);
+  // "C" sits in the overlap that the previous chunk would own, but that
+  // chunk is empty, so trimming as usual would leave the line unclaimed
+  assert.deepEqual(merged.map((s) => s.text), ["A", "C"]);
   assert.equal(merged[1].start, 591);
 });
 
-test("整段没有任何字幕时返回空数组，不抛错", () => {
+test("no segments at all returns an empty array rather than throwing", () => {
   assert.deepEqual(merge.mergeChunks([]), []);
 });
 
-test("分块乱序传入时仍按时间排好序", () => {
-  // 2 路并发下，后一块可能比前一块先完成
+test("chunks passed out of order still come back in time order", () => {
+  // With two workers the later chunk can finish before the earlier one
   const merged = merge.mergeChunks([
-    { offset: 590, segments: [{ start: 1, end: 2, text: "后面的话" }] },
-    { offset: 0, segments: [{ start: 1, end: 2, text: "前面的话" }] },
+    { offset: 590, segments: [{ start: 1, end: 2, text: "later line" }] },
+    { offset: 0, segments: [{ start: 1, end: 2, text: "earlier line" }] },
   ]);
 
-  assert.deepEqual(merged.map((s) => s.text), ["前面的话", "后面的话"]);
+  assert.deepEqual(merged.map((s) => s.text), ["earlier line", "later line"]);
   assert.ok(merged[0].start < merged[1].start);
 });
 
-test("单块内部字幕乱序时也会排好", () => {
+test("segments unordered within one chunk are sorted too", () => {
   const merged = merge.mergeChunks([
     { offset: 0, segments: [
-      { start: 10, end: 12, text: "第二" },
-      { start: 1, end: 3, text: "第一" },
+      { start: 10, end: 12, text: "second" },
+      { start: 1, end: 3, text: "first" },
     ]},
   ]);
-  assert.deepEqual(merged.map((s) => s.text), ["第一", "第二"]);
+  assert.deepEqual(merged.map((s) => s.text), ["first", "second"]);
 });

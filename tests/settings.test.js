@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const settings = require("../settings.js");
 
-test("默认服务商是 DeepSeek，模型为 V4 Flash", () => {
+test("the default provider is DeepSeek on V4 Flash", () => {
   const normalized = settings.normalize({
     provider: "unexpected",
     aiBaseUrl: "https://api.example.com/v1",
@@ -13,13 +13,14 @@ test("默认服务商是 DeepSeek，模型为 V4 Flash", () => {
 
   assert.equal(normalized.provider, "deepseek");
   assert.equal(normalized.aiBaseUrl, "https://api.deepseek.com");
-  // 服务商无效时模型名也回到默认，不留下跑不通的组合
+  // An invalid provider resets the model too, leaving no unusable pair
   assert.equal(normalized.aiModel, "deepseek-v4-flash");
   assert.equal(normalized.supadataApiKey, "example-supadata");
 });
 
-test("为某个服务商填的密钥不会被发给另一个服务商", () => {
-  // 这是原项目迁移逻辑背后的安全意图，改成多服务商后必须继续成立
+test("a key entered for one provider is never sent to another", () => {
+  // This was the safety intent behind upstream's migration and must survive
+  // the move to multiple providers
   const normalized = settings.normalize({
     provider: "openai",
     aiApiKeys: { deepseek: "deepseek-secret", custom: "custom-secret" },
@@ -30,7 +31,7 @@ test("为某个服务商填的密钥不会被发给另一个服务商", () => {
   assert.equal(normalized.aiApiKeys.custom, "custom-secret");
 });
 
-test("老版本的单个密钥迁移后仍归属原服务商，且迁移是幂等的", () => {
+test("a legacy key stays with its own provider after migration, which is idempotent", () => {
   const legacy = {
     provider: "custom",
     aiApiKey: "custom-secret",
@@ -42,7 +43,7 @@ test("老版本的单个密钥迁移后仍归属原服务商，且迁移是幂�
 
   assert.equal(first.migrated, true);
   assert.equal(first.settings.provider, "custom");
-  // 密钥留在 custom 名下，不会跟着跑到 DeepSeek 去
+  // The key stays under custom rather than following along to DeepSeek
   assert.equal(first.settings.aiApiKeys.custom, "custom-secret");
   assert.equal(first.settings.aiApiKeys.deepseek, undefined);
   assert.equal(first.settings.aiBaseUrl, "https://api.example.com/v1");
@@ -64,7 +65,7 @@ test("Supadata receives a canonical YouTube URL", () => {
   );
 });
 
-test("切换服务商时保留各自已填的密钥", () => {
+test("switching providers keeps each provider's saved key", () => {
   const normalized = settings.normalize({
     provider: "openai",
     aiModel: "gpt-5",
@@ -78,18 +79,18 @@ test("切换服务商时保留各自已填的密钥", () => {
   assert.equal(normalized.aiApiKeys.openai, "openai-key");
 });
 
-test("未知服务商回落到 DeepSeek 默认值", () => {
-  const normalized = settings.normalize({ provider: "不存在的服务商" });
+test("an unknown provider falls back to the DeepSeek defaults", () => {
+  const normalized = settings.normalize({ provider: "no-such-provider" });
   assert.equal(normalized.provider, "deepseek");
   assert.equal(normalized.aiModel, "deepseek-v4-flash");
 });
 
-test("没填模型名时自动用该服务商的默认模型", () => {
+test("an empty model name uses that provider's default", () => {
   const normalized = settings.normalize({ provider: "anthropic", aiModel: "" });
   assert.equal(normalized.aiModel, "claude-opus-5");
 });
 
-test("老配置里的单个密钥迁移到 DeepSeek 名下，不用重填", () => {
+test("a legacy single key migrates under DeepSeek so it need not be re-entered", () => {
   const { settings: migrated, migrated: didMigrate } = settings.migrateLegacyCustom({
     provider: "deepseek",
     aiApiKey: "old-single-key",
@@ -101,7 +102,7 @@ test("老配置里的单个密钥迁移到 DeepSeek 名下，不用重填", () =
   assert.equal(didMigrate, true);
 });
 
-test("自定义服务商保留用户填写的接口地址，其他服务商用内置地址", () => {
+test("custom keeps the URL the user typed; other providers use built-in ones", () => {
   const custom = settings.normalize({
     provider: "custom",
     aiBaseUrl: "  https://my-proxy.example.com/v1  ",
@@ -113,11 +114,11 @@ test("自定义服务商保留用户填写的接口地址，其他服务商用�
     provider: "openai",
     aiBaseUrl: "https://attacker.example.com",
   });
-  // 非自定义服务商不接受外部传入的地址，防止配置被污染
+  // Non-custom providers reject externally supplied URLs, so config cannot be poisoned
   assert.equal(openai.aiBaseUrl, "https://api.openai.com/v1");
 });
 
-test("activeApiKey 取出当前服务商对应的密钥", () => {
+test("activeApiKey returns the key for the selected provider", () => {
   const normalized = settings.normalize({
     provider: "openai",
     aiApiKeys: { deepseek: "d-key", openai: "o-key" },

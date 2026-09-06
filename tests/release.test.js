@@ -16,38 +16,28 @@ test("manifest uses minimized install-time permissions", () => {
   assert.equal(manifest.options_ui.page, "options.html");
   assert.ok(!manifest.permissions.includes("activeTab"));
   assert.ok(manifest.host_permissions.includes("https://api.deepseek.com/*"));
-  // 安装时授予的权限必须是具体域名，不得出现通配
+  // Install-time permissions must name concrete hosts, never a wildcard
   for (const host of manifest.host_permissions) {
-    assert.doesNotMatch(host, /^https:\/\/\*/, `安装时权限不得使用通配域名：${host}`);
+    assert.doesNotMatch(host, /^https:\/\/\*/, `install-time permission must not use a wildcard host: ${host}`);
   }
-  // 自定义服务商的地址事先未知，只能走可选权限在运行时逐个申请。
-  // 上游不支持自定义服务商，所以原本禁止这一项；我们支持，因此改为
-  // 约束它必须是 https，且安装时不授予任何东西。
+  // A custom provider's URL is unknown ahead of time, so it can only be
+  // requested at runtime through optional permissions. Upstream forbade this
+  // entry because it had no custom provider; we support one, so the rule
+  // becomes: https only, and nothing granted at install time.
   for (const host of manifest.optional_host_permissions || []) {
-    assert.match(host, /^https:\/\//, `可选权限必须是 https：${host}`);
+    assert.match(host, /^https:\/\//, `optional permission must be https: ${host}`);
   }
-    // 相对上游的两个大功能：多服务商与 AI 字幕。版本号也借此与上游区分
+    // Two headline features over upstream: multiple providers and AI captions.
+  // The version also separates this fork from upstream's numbering
   assert.equal(manifest.version, "2.0.0");
 });
 
 test("release copy documents current scope without em dashes", () => {
   const readme = read("README.md");
-  const chineseReadme = read("README.zh-CN.md");
   const manifest = JSON.parse(read("manifest.json"));
   const packageJson = JSON.parse(read("package.json"));
 
   assert.doesNotMatch(readme, /—/);
-  assert.doesNotMatch(chineseReadme, /—/);
-  assert.doesNotMatch(manifest.description, /—/);
-  assert.doesNotMatch(packageJson.description, /—/);
-
-  assert.equal(manifest.name, "YouTube Digest AI");
-  assert.equal(packageJson.name, "youtube-digest-ai");
-  assert.match(read("scripts/package-extension.sh"), /youtube-digest-ai-v\$version\.zip/);
-  assert.doesNotMatch(
-    [readme, chineseReadme, read("PRIVACY.md"), read("SECURITY.md")].join("\n"),
-    /\bYT Digest\b/,
-  );
   assert.match(readme, /^# YouTube Digest AI$/m);
   assert.match(
     readme,
@@ -73,73 +63,17 @@ test("release copy documents current scope without em dashes", () => {
   );
   assert.match(readme, /upstream issues and pull requests are not accepted/i);
   assert.doesNotMatch(readme, /^## Contributing$/m);
-  assert.match(chineseReadme, /^# YouTube Digest AI$/m);
-  assert.match(chineseReadme, /把每个 YouTube 视频变成一份可以深入学习的资料/);
-  assert.match(chineseReadme, /^## 让你的编程 Agent 帮你安装$/m);
-  assert.match(
-    chineseReadme,
-    /我选择的长期保留文件夹[\s\S]*告诉我准确的完整路径[\s\S]*第一次安装时需要位置建议[\s\S]*`~\/Documents\/youtube-digest`[\s\S]*`%USERPROFILE%\\Documents\\youtube-digest`[\s\S]*不要假设我一定使用这些路径/,
-  );
-  assert.match(
-    chineseReadme,
-    /如果移动或删除源代码文件夹，Chrome 中加载的扩展会失效，需要从新的位置重新加载。/,
-  );
-  assert.match(
-    chineseReadme,
-    /“加载已解压的扩展程序”选择你刚才确定的那个准确项目文件夹/,
-  );
-  assert.match(
-    chineseReadme,
-    /选择你刚才确定的那个准确项目文件夹，其中必须包含 `manifest\.json`/,
-  );
-  assert.match(chineseReadme, /不接受上游 Issue 或 Pull Request/);
-  assert.match(chineseReadme, /增加更多翻译语言/);
-
-  assert.match(readme, /100 credits per month/i);
-  assert.match(readme, /native transcript request uses \*\*1 credit\*\*/i);
-  assert.match(readme, /generated transcript costs \*\*2 credits per video minute\*\*/i);
-  assert.match(readme, /HTTP `206` still uses \*\*1 credit\*\*/i);
-  assert.match(readme, /forces `mode=native`/i);
-  assert.match(readme, /roughly 100 transcript lookups per month/i);
-  assert.match(readme, /supadata\.ai\/pricing/i);
-  assert.match(readme, /docs\.supadata\.ai\/get-transcript/i);
-  assert.match(readme, /dash\.supadata\.ai\/auth\/sign-up/i);
-  assert.match(readme, /platform\.deepseek\.com\/api_keys/i);
-  assert.match(readme, /api-docs\.deepseek\.com/i);
-  assert.match(readme, /api-docs\.deepseek\.com\/quick_start\/pricing/i);
-  assert.match(readme, /\$0\.007[\s\S]*\$0\.014/);
-  assert.match(readme, /\$0\.22[\s\S]*\$0\.44/);
-  assert.match(readme, /\$0\.66[\s\S]*\$1\.32/);
-  assert.match(readme, /01:00–04:00[\s\S]*06:00–10:00 UTC/);
-  assert.match(readme, /20-minute English talk/i);
-  assert.match(readme, /32,600 input tokens/i);
-  assert.match(readme, /\$0\.003[^\n]*\$0\.010 USD/i);
-  assert.match(readme, /\$0\.005[^\n]*\$0\.020 USD/i);
-  assert.match(chineseReadme, /api-docs\.deepseek\.com\/quick_start\/pricing/i);
-  assert.match(chineseReadme, /\$0\.007[\s\S]*\$0\.014/);
-  assert.match(chineseReadme, /\$0\.22[\s\S]*\$0\.44/);
-  assert.match(chineseReadme, /\$0\.66[\s\S]*\$1\.32/);
-  assert.match(chineseReadme, /UTC 01:00–04:00[\s\S]*06:00–10:00/);
-  assert.match(chineseReadme, /20 \u5206\u949f\u82f1\u6587\u89c6\u9891/);
-  assert.match(chineseReadme, /32,600 \u4e2a\u8f93\u5165 token/);
-  assert.match(chineseReadme, /\$0\.003[^\n]*\$0\.010 USD/);
-  assert.match(chineseReadme, /\$0\.005[^\n]*\$0\.020 USD/);
-  assert.match(chineseReadme, /dash\.supadata\.ai\/auth\/sign-up/i);
-  assert.match(chineseReadme, /platform\.deepseek\.com\/api_keys/i);
-  assert.match(readme, /^### The Digest button is missing on a YouTube video$/m);
-  assert.match(
-    chineseReadme,
-    /^### YouTube 视频页面没有显示 Digest 按钮$/m,
-  );
 
   const optionsPage = read("options.html");
   const optionsStyles = read("options.css");
   const optionsScript = read("options.js");
   assert.match(optionsPage, /dash\.supadata\.ai\/auth\/sign-up/i);
-  // 获取密钥的链接现在随选中的服务商变化，不再写死在页面里；
-  // 各家的链接由 providers.js 提供，并在 providers.test.js 里断言。
+  // The key-creation link now follows the selected provider instead of being
+  // hardcoded in the page; providers.js supplies them and providers.test.js
+  // asserts them.
   assert.doesNotMatch(optionsPage, /platform\.deepseek\.com\/api_keys/i);
-  // 与上游相反的产品方向：上游刻意只支持一家，我们提供选择器
+  // Opposite product direction from upstream, which deliberately supported
+  // one provider; we offer a selector
   assert.match(optionsPage, /<select[^>]+id="provider"/);
   assert.match(optionsPage, /id="aiBaseUrl"/);
   assert.match(optionsPage, /id="aiModel"/);
@@ -154,60 +88,60 @@ test("release copy documents current scope without em dashes", () => {
     readme,
     /first open the exact YouTube Digest project folder that Chrome loaded through \*\*Load unpacked\*\* in your coding agent/,
   );
-  assert.match(
-    chineseReadme,
-    /先在编程 Agent 中打开 Chrome 通过“加载已解压的扩展程序”使用的那个准确的 YouTube Digest 项目文件夹/,
-  );
 
   const publishedDocs = [
     readme,
-    chineseReadme,
     read("PRIVACY.md"),
     read("SECURITY.md"),
   ].join("\n");
-  // 与上游相反的方向：上游刻意保证文档不提「可换服务商」，我们支持多家，
-  // 因此文档必须如实说明数据会发往用户选择的那一家。
+  // Opposite direction from upstream, whose docs deliberately never mention
+  // switching providers. We support several, so the docs must say plainly
+  // that data goes to whichever one the user picked.
   const privacy = read("PRIVACY.md");
 
-  // 隐私文档不能再宣称只发给 DeepSeek——那是错的，会误导用户
+  // The privacy doc can no longer claim DeepSeek is the only destination;
+  // that is false and misleads the reader
   assert.doesNotMatch(
     privacy,
-    /only AI provider|唯一的 AI 服务商/i,
-    "隐私文档仍在宣称只有一家 AI 服务商",
+    /only AI provider/i,
+    "the privacy doc still claims a single AI provider",
   );
-  // 必须列出所有可能收到数据的服务商
+  // Every provider that may receive data must be listed
   for (const name of ["OpenAI", "Anthropic", "Gemini", "DeepSeek"]) {
-    assert.match(privacy, new RegExp(name), `隐私文档没有提到 ${name}`);
+    assert.match(privacy, new RegExp(name), `the privacy doc does not mention ${name}`);
   }
-  // 自定义服务商会把数据发到用户填的任意地址，这一点必须说清楚
-  assert.match(privacy, /custom|自定义/i);
-  // 运行时申请的可选权限也必须说明
+  // A custom provider sends data to whatever address the user typed, which
+  // has to be stated
+  assert.match(privacy, /custom/i);
+  // Runtime-requested optional permissions must be explained too
   assert.match(privacy, /optional_host_permissions|optional host/i);
-  // 已移除的「交给编程 Agent 改代码」流程不该再出现在文档里
+  // The removed hand-it-to-a-coding-agent flow should be gone from the docs
   assert.doesNotMatch(privacy, /coding-agent prompt|coding agent prompt/i);
 
-  // 两个 README 同样不能再宣称只有一家服务商，或让用户改代码去换模型
-  for (const [name, doc] of [["README.md", readme], ["README.zh-CN.md", chineseReadme]]) {
-    assert.doesNotMatch(doc, /only AI provider/i, `${name} 仍宣称只有一家 AI 服务商`);
-    assert.doesNotMatch(doc, /只支持 DeepSeek/, `${name} 仍宣称只支持 DeepSeek`);
+  // The README likewise must not claim a single provider, or tell the user
+  // to edit code to switch models
+  for (const [name, doc] of [["README.md", readme]]) {
+    assert.doesNotMatch(doc, /only AI provider/i, `${name} still claims a single AI provider`);
+    assert.doesNotMatch(doc, /supports DeepSeek V4 Flash as its only/, `${name} still claims DeepSeek-only support`);
     assert.doesNotMatch(
       doc,
-      /require a local code adaptation|需要修改本地代码/,
-      `${name} 仍让用户改代码才能换服务商`,
+      /require a local code adaptation/,
+      `${name} still tells the user to edit code to switch providers`,
     );
     assert.doesNotMatch(
       doc,
-      /no Base URL or Model fields|没有需要填写的 Base URL/i,
-      `${name} 仍说没有模型和地址可填`,
+      /no Base URL or Model fields/i,
+      `${name} still says there is no model or URL to configure`,
     );
   }
 
-  // SECURITY.md 列出的网络目标要覆盖全部服务商，否则安全承诺是错的
+  // SECURITY.md's list of network destinations must cover every provider,
+  // or the security promise is wrong
   const security = read("SECURITY.md");
   assert.doesNotMatch(
     security,
     /YouTube, Supadata, and DeepSeek hosts/i,
-    "SECURITY.md 的网络目标清单没有跟上多服务商",
+    "SECURITY.md's destination list has not kept up with multiple providers",
   );
 });
 

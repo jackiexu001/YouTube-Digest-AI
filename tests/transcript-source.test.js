@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const resolver = require("../asr/transcript-source.js");
 
-/** 造一套可控的依赖，记录每一层是否被调用 */
+/** Builds controllable dependencies that record which layer was called */
 function deps(overrides = {}) {
   const calls = [];
   return {
@@ -14,17 +14,17 @@ function deps(overrides = {}) {
     },
     nativeCaptions: async () => {
       calls.push("native");
-      return [{ start: 0, end: 2, text: "免费字幕" }];
+      return [{ start: 0, end: 2, text: "free caption" }];
     },
     supadata: async () => {
       calls.push("supadata");
-      return { success: true, transcript: [{ start: 0, duration: 2, text: "付费字幕" }] };
+      return { success: true, transcript: [{ start: 0, duration: 2, text: "paid caption" }] };
     },
     ...overrides,
   };
 }
 
-test("有原生字幕时直接免费取，不动 Supadata", async () => {
+test("native captions are taken for free, leaving Supadata alone", async () => {
   const d = deps({
     youtubeSource: async () => ({
       ok: true,
@@ -35,37 +35,37 @@ test("有原生字幕时直接免费取，不动 Supadata", async () => {
   const result = await resolver.resolve({ videoId: "v", ...d });
 
   assert.equal(result.source, "youtube");
-  assert.equal(result.transcript[0].text, "免费字幕");
-  assert.ok(!d.calls.includes("supadata"), "不该动用 Supadata 的额度");
+  assert.equal(result.transcript[0].text, "free caption");
+  assert.ok(!d.calls.includes("supadata"), "should not spend a Supadata credit");
 });
 
-test("YouTube 说一条字幕轨都没有时，跳过 Supadata 直接进 AI 分支", async () => {
-  // Supadata 用的是 native 模式，YouTube 自己都说没有，它也不可能有
+test("when YouTube reports no caption tracks, Supadata is skipped for the AI branch", async () => {
+  // Supadata runs in native mode; if YouTube says none exist, neither will it
   const d = deps();
   const result = await resolver.resolve({ videoId: "v", ...d });
 
   assert.equal(result.source, "none");
   assert.equal(result.needsAiCaptions, true);
   assert.equal(result.durationSeconds, 600);
-  assert.ok(!d.calls.includes("supadata"), "白白花掉了一个 credit");
+  assert.ok(!d.calls.includes("supadata"), "wasted a credit");
 });
 
-test("原生字幕下载失败时退回 Supadata 兜底", async () => {
+test("a failed native download falls back to Supadata", async () => {
   const d = deps({
     youtubeSource: async () => ({
       ok: true,
       captionTracks: [{ languageCode: "zh", baseUrl: "https://t" }],
       durationSeconds: 600,
     }),
-    nativeCaptions: async () => { throw new Error("timedtext 挂了"); },
+    nativeCaptions: async () => { throw new Error("timedtext is down"); },
   });
   const result = await resolver.resolve({ videoId: "v", ...d });
 
   assert.equal(result.source, "supadata");
-  assert.equal(result.transcript[0].text, "付费字幕");
+  assert.equal(result.transcript[0].text, "paid caption");
 });
 
-test("原生字幕返回空时也退回 Supadata", async () => {
+test("empty native captions also fall back to Supadata", async () => {
   const d = deps({
     youtubeSource: async () => ({
       ok: true, captionTracks: [{ languageCode: "zh", baseUrl: "https://t" }], durationSeconds: 600,
@@ -76,16 +76,17 @@ test("原生字幕返回空时也退回 Supadata", async () => {
   assert.equal(result.source, "supadata");
 });
 
-test("取不到播放器信息时交给 Supadata 判断，而不是直接说没字幕", async () => {
+test("unavailable player info defers to Supadata rather than declaring no captions", async () => {
   const d = deps({ youtubeSource: async () => ({ ok: false, error: "403" }) });
   const result = await resolver.resolve({ videoId: "v", ...d });
 
   assert.equal(result.source, "supadata");
-  assert.equal(result.transcript[0].text, "付费字幕");
+  assert.equal(result.transcript[0].text, "paid caption");
 });
 
-test("播放器信息取不到且 Supadata 也说没有时，不提供 AI 选项", async () => {
-  // 拿不到播放器信息就等于拿不到音频地址，此时给按钮等于给一个必然失败的操作
+test("no player info and no Supadata captions means no AI option", async () => {
+  // No player info means no audio URL, so a button here would be an action
+  // guaranteed to fail
   const d = deps({
     youtubeSource: async () => ({ ok: false, error: "403" }),
     supadata: async () => ({ success: false, error: "NO_TRANSCRIPT" }),
@@ -97,13 +98,13 @@ test("播放器信息取不到且 Supadata 也说没有时，不提供 AI 选项
   assert.equal(result.audioUnavailable, true);
 });
 
-test("总开关关掉时，没字幕就是没字幕，不提供 AI 选项", async () => {
+test("with the master switch off, no captions simply means no captions", async () => {
   const d = deps();
   const result = await resolver.resolve({ videoId: "v", aiCaptionsEnabled: false, ...d });
   assert.equal(result.needsAiCaptions, false);
 });
 
-test("原生字幕优先人工轨，其次自动生成轨", async () => {
+test("human caption tracks are preferred over auto-generated ones", async () => {
   let picked = null;
   const d = deps({
     youtubeSource: async () => ({
@@ -120,5 +121,5 @@ test("原生字幕优先人工轨，其次自动生成轨", async () => {
     },
   });
   await resolver.resolve({ videoId: "v", ...d });
-  assert.equal(picked, "https://human", "自动生成的字幕质量不如人工轨");
+  assert.equal(picked, "https://human", "auto-generated captions are worse than a human track");
 });

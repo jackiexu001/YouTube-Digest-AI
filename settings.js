@@ -1,16 +1,17 @@
 /**
- * 共享的非机密配置。
+ * Shared, non-secret configuration.
  *
- * API 密钥由 options.js 存进 chrome.storage.local，本文件只有默认值和校验，
- * 因此可以安全公开。
+ * API keys are written to chrome.storage.local by options.js. This file holds
+ * defaults and validation only, so it is safe to publish.
  */
 var YTD_SETTINGS = (() => {
   const providersApi =
     typeof YTD_PROVIDERS !== "undefined"
       ? YTD_PROVIDERS
       : require("./providers.js");
-  // 语音识别的服务商与文本模型完全分开：一个把声音变成文字，
-  // 一个做概览和翻译，用的是不同的服务、不同的密钥。
+  // Speech recognition is kept entirely separate from the text model: one
+  // turns audio into text, the other writes overviews and translations, and
+  // they use different services with different keys.
   const asrApi =
     typeof YTD_ASR_PROVIDERS !== "undefined"
       ? YTD_ASR_PROVIDERS
@@ -41,7 +42,7 @@ var YTD_SETTINGS = (() => {
   }
 
   function isLegacyCustom(input) {
-    // 老版本把密钥存在顶层 aiApiKey，新版本按服务商分开存
+    // Older versions stored one key at aiApiKey; keys are now per provider
     return !!input && typeof input.aiApiKey === "string" && !!input.aiApiKey.trim();
   }
 
@@ -63,13 +64,14 @@ var YTD_SETTINGS = (() => {
     const provider = KNOWN_PROVIDERS.has(requested) ? requested : DEFAULT_PROVIDER;
     const meta = providersApi.getProvider(provider);
 
-    // 服务商无效时连模型名一起回到默认，避免留下一个跑不通的组合
+    // An unknown provider resets the model too, so no unusable pair is stored
     const model = KNOWN_PROVIDERS.has(requested)
       ? text(input.aiModel) || meta.defaultModel
       : meta.defaultModel;
 
-    // 只有自定义服务商接受外部传入的地址。其余用内置地址，
-    // 防止存储被污染后把请求和密钥发到别处。
+    // Only the custom provider accepts an externally supplied URL. The rest
+    // use built-in addresses, so tampered storage cannot redirect requests
+    // and keys elsewhere.
     const baseUrl =
       provider === "custom" ? text(input.aiBaseUrl) : meta.baseUrl;
 
@@ -87,11 +89,12 @@ var YTD_SETTINGS = (() => {
       asrProvider: asrProvider,
       asrModel: text(input.asrModel) || asrMeta.defaultModel,
       asrApiKeys: pickKeys(input.asrApiKeys, KNOWN_ASR_PROVIDERS),
-      // 没有明确关掉就算开着：这是本项目相对上游新增的核心能力
+      // On unless explicitly disabled: this is the headline feature over upstream
       aiCaptionsEnabled: input.aiCaptionsEnabled !== false,
-      // 自动生成默认关闭：这一步会真实花钱，默认自动开始等于
-      // 替用户做了花钱的决定。总开关关掉时它也必须跟着失效，
-      // 否则会出现「AI 字幕已关闭却仍在自动扣费」这种自相矛盾的状态
+      // Auto-start is off by default because this step costs real money;
+      // starting automatically would make a spending decision on the user's
+      // behalf. It must also follow the master switch, or you get the
+      // contradictory state of "AI captions off, still charging".
       aiCaptionsAutoStart:
         input.aiCaptionsEnabled !== false && input.aiCaptionsAutoStart === true,
       supadataApiKey: text(input.supadataApiKey),

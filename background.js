@@ -97,8 +97,8 @@ async function requestAiCompletion({
     error.code = "NO_AI_KEY";
     throw error;
   }
-  // 请求的具体形状由服务商适配器决定：各家的地址、鉴权头、
-  // 请求结构都不同，这里只提供内容，不关心格式。
+  // The adapter decides the request shape. Providers differ in URL, auth
+  // header and body structure; this layer supplies content, not format.
   const request = YTD_PROVIDERS.buildRequest({
     providerId: settings.provider,
     baseUrl: settings.aiBaseUrl,
@@ -139,8 +139,9 @@ async function requestAiCompletion({
       body: JSON.stringify(request.body),
       signal: controller.signal,
     });
-    // 收到响应头说明服务商仍在推进。有些服务商会在排队时
-    // 先发空白的响应体分块，所以这里重置的是「无活动」计时器。
+    // Response headers prove the provider is still making progress. Some
+    // send blank body chunks while a request queues, which is why the timer
+    // being reset here is the idle one.
     resetIdleTimeout();
 
     const data = await readBoundedAiResponse(response, resetIdleTimeout);
@@ -654,17 +655,18 @@ async function getPlayerVideoDetails(tabId) {
  */
 
 // ============================================================
-// AI 字幕：取音频、识别、缓存
+// AI captions: fetch audio, transcribe, cache
 // ============================================================
 
 const AI_CAPTION_CACHE_PREFIX = "ytd_ai_transcript_";
 const AI_CHUNK_SECONDS = 300;
 
 /**
- * 在页面自己的环境里向 YouTube 官方接口取播放器信息。
+ * Reads player info from YouTube's own endpoint, in the page's context.
  *
- * 必须走 MAIN world：扩展自己发请求会带上 Origin: chrome-extension://...，
- * YouTube 返回 403，而浏览器不允许扩展伪造 Origin。
+ * MAIN world is mandatory: a request sent by the extension carries
+ * Origin: chrome-extension://..., which YouTube answers with 403, and a
+ * browser will not let an extension forge Origin.
  */
 async function fetchYouTubePlayer(tabId, videoId) {
   try {
@@ -708,7 +710,7 @@ async function fetchYouTubePlayer(tabId, videoId) {
             const data = await res.json();
             if (data?.streamingData?.adaptiveFormats?.length) return { ok: true, data };
           } catch (e) {
-            // 换下一个客户端身份再试
+            // Try the next client identity
           }
         }
         return { ok: false, error: "no-usable-client" };
@@ -729,7 +731,7 @@ async function fetchYouTubePlayer(tabId, videoId) {
   }
 }
 
-/** 在页面环境里下载原生字幕。同样是 Origin 的原因。 */
+/** Downloads a native caption track from the page context, same Origin reason. */
 async function fetchNativeCaptionTrack(tabId, track) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -744,7 +746,7 @@ async function fetchNativeCaptionTrack(tabId, track) {
   return YTD_YOUTUBE_SOURCE.parseCaptionJson(result);
 }
 
-/** 把统一的分段格式转成下游功能认识的形状。 */
+/** Converts the shared segment format into the shape downstream features expect. */
 function toTranscriptShape(segments) {
   const transcript = [];
   let plain = "";
@@ -781,18 +783,21 @@ async function writeAiCaptionCache(videoId, value) {
 
 
 /**
- * 字幕获取的入口。下游的翻译、概览、笔记、搜索都只认它的返回格式，
- * 所以无论字幕来自哪一层，返回的形状都必须一致。
+ * Entry point for transcript retrieval. Translation, overviews, notes and
+ * search all read this one return shape, so every layer must produce it
+ * identically regardless of where the captions came from.
  */
 
 /**
- * 生成 AI 字幕。
+ * Generates AI captions.
  *
- * 流程：取音频地址 → 读 sidx 索引 → 按 5 分钟切块 →
- * 每块并行下载、解码成 WAV、送识别 → 边跑边保存断点和结果。
+ * Flow: get the audio URL, read the sidx index, split into 5-minute chunks,
+ * then per chunk download in parallel, decode to WAV, and transcribe,
+ * saving a checkpoint and results as it goes.
  *
- * 音频下载和解码都在页面环境里做：下载是因为 googlevideo 只给
- * youtube.com 来源放行 CORS，解码是因为 service worker 里没有 AudioContext。
+ * Download and decode both happen in the page context: download because
+ * googlevideo only allows CORS for a youtube.com origin, decode because a
+ * service worker has no AudioContext.
  */
 async function handleGenerateAiCaptions(videoId, tabId, onProgress) {
   const settings = await getSettings();
@@ -807,7 +812,7 @@ async function handleGenerateAiCaptions(videoId, tabId, onProgress) {
     return { success: false, error: "NO_AUDIO", message: "Could not read this video's audio stream." };
   }
   if (player.audioFormat.container !== "mp4") {
-    // webm 的切片需要另写 EBML 解析，目前只支持 mp4
+    // Slicing webm would need a separate EBML parser; only mp4 is supported
     return { success: false, error: "UNSUPPORTED_AUDIO", message: "This video's audio format is not supported yet." };
   }
 
@@ -825,7 +830,7 @@ async function handleGenerateAiCaptions(videoId, tabId, onProgress) {
     overlapSeconds: 10,
   });
 
-  // 断点：上次跑到哪接着跑，已完成的块不重复花钱
+  // Checkpoint: resume where the last run stopped, without paying twice
   const cached = await readAiCaptionCache(videoId);
   const doneChunks = cached?.doneChunks || {};
 
@@ -871,7 +876,7 @@ async function handleGenerateAiCaptions(videoId, tabId, onProgress) {
   };
 }
 
-/** 播放器地址里带着它自己的分段与封装参数，要剥掉换成我们的。 */
+/** The player URL carries its own range and framing params; strip them for ours. */
 function stripPlayerParams(rawUrl) {
   const url = new URL(rawUrl);
   for (const key of ["range", "rn", "rbuf", "ump", "srfvp", "sabr", "alr", "cmo"]) {
@@ -880,7 +885,7 @@ function stripPlayerParams(rawUrl) {
   return url.toString();
 }
 
-/** 在页面环境里取一段音频字节，用 base64 搬回来。 */
+/** Fetches a byte range of audio from the page context, carried back as base64. */
 async function fetchAudioRange(tabId, url, start, end) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -905,7 +910,8 @@ async function fetchAudioRange(tabId, url, start, end) {
   return bytes;
 }
 
-/** 一块音频：下载 → 解码成 WAV → 送识别。解码在页面环境做，因为 service worker 没有 AudioContext。 */
+/** One chunk: download, decode to WAV, transcribe. Decoding runs in the page
+ * context because a service worker has no AudioContext. */
 async function transcribeOneChunk({ tabId, audioUrl, index, chunk, apiKey, providerId, model }) {
   const [initBytes, bodyBytes] = await Promise.all([
     fetchAudioRange(tabId, audioUrl, 0, index.initLength - 1),
@@ -983,7 +989,7 @@ async function transcribeOneChunk({ tabId, audioUrl, index, chunk, apiKey, provi
 async function handleFetchTranscript(videoId, tabId) {
   const settings = await getSettings();
 
-  // 已经花钱生成过的 AI 字幕直接复用，不重复计费
+  // Reuse AI captions already paid for rather than billing again
   const cached = await readAiCaptionCache(videoId);
   if (cached?.segments?.length) {
     return {
@@ -995,7 +1001,8 @@ async function handleFetchTranscript(videoId, tabId) {
     };
   }
 
-  // 没有标签页信息时退回原来的单层行为，保证任何情况下都不比原项目差
+  // Without a tab id, fall back to the original single-layer behaviour so
+  // this is never worse than upstream
   if (typeof tabId !== "number") return await fetchTranscriptFromSupadata(videoId);
 
   const resolved = await YTD_TRANSCRIPT_SOURCE.resolve({
@@ -1026,7 +1033,7 @@ async function handleFetchTranscript(videoId, tabId) {
     };
   }
 
-  // 没有任何现成字幕
+  // No existing captions anywhere
   if (resolved.needsAiCaptions) {
     const asr = YTD_ASR_PROVIDERS.getProvider(settings.asrProvider);
     const seconds = resolved.durationSeconds;
@@ -1044,7 +1051,7 @@ async function handleFetchTranscript(videoId, tabId) {
         }),
         provider: asr.label,
         freeTier: asr.freeTier,
-        // 超过单次额度上限的视频要提前说，而不是跑到一半才失败
+        // Flag an over-quota video up front rather than failing halfway
         exceedsHourlyQuota: !!asr.freeTier && seconds > asr.freeTier.secondsPerHour,
       },
     };

@@ -672,7 +672,7 @@ async function startDigest(videoId, videoUrl) {
   });
 
   if (!transcriptResult.success) {
-    // 没有任何现成字幕，但可以用 AI 生成
+    // No existing captions, but AI can generate them
     if (transcriptResult.error === "NO_NATIVE_CAPTIONS" && transcriptResult.aiCaptions) {
       showAiCaptionPrompt(videoId, transcriptResult.aiCaptions);
       return;
@@ -1387,12 +1387,12 @@ function exportTranscript() {
 
 
 // ============================================================
-// AI 字幕
+// AI captions
 // ============================================================
 
 let aiCaptionVideoId = null;
 
-/** 显示费用与额度预估，等用户决定。绝不自动开始。 */
+/** Shows the cost and quota estimate and waits. Never starts on its own. */
 function showAiCaptionPrompt(videoId, info) {
   aiCaptionVideoId = videoId;
   const prompt = YTD_CAPTION_PROMPT.buildPrompt({
@@ -1417,8 +1417,8 @@ function showAiCaptionPrompt(videoId, info) {
     ? () => startAiCaptions(videoId)
     : () => chrome.runtime.sendMessage({ action: "openOptions" });
 
-  // 用户在设置里打开了自动生成就直接开始。仍然先把费用和额度显示出来，
-  // 这样即使不需要点击，也能看到这次花了多少
+  // Start immediately if the user enabled auto-start. The cost and quota are
+  // still rendered first, so even without a click they can see what it costs
   if (prompt.canStart && info.autoStart) startAiCaptions(videoId);
 }
 
@@ -1426,8 +1426,8 @@ async function startAiCaptions(videoId) {
   const button = document.getElementById("aiCaptionBtn");
   const status = document.getElementById("aiCaptionStatus");
   button.disabled = true;
-  button.textContent = "正在生成…";
-  status.textContent = "正在读取音频…";
+  button.textContent = "Generating...";
+  status.textContent = "Reading audio...";
 
   const activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
   const result = await chrome.runtime.sendMessage({
@@ -1445,23 +1445,24 @@ async function startAiCaptions(videoId) {
     });
     status.textContent = state.message;
     button.disabled = false;
-    button.textContent = "继续";
-    // 已完成的部分先给用户读，不要因为后面撞限流就什么都不显示
+    button.textContent = "Resume";
+    // Show what finished; hitting a limit later should not hide it all
     if (result.transcript?.length) applyTranscript(result);
     return;
   }
 
   if (!result?.success) {
-    status.textContent = result?.message || result?.error || "生成失败，请重试。";
+    status.textContent = result?.message || result?.error || "Generation failed. Please try again.";
     button.disabled = false;
-    button.textContent = "重试";
+    button.textContent = "Retry";
     return;
   }
 
   applyTranscript(result);
 }
 
-/** 把生成好的字幕交给现有的展示流程，下游功能感知不到来源差异。 */
+/** Hands the generated captions to the existing render path; downstream
+ * features cannot tell where they came from. */
 function applyTranscript(result) {
   currentTranscript = result.transcript;
   currentTranscriptText = result.transcriptText;
@@ -1474,7 +1475,7 @@ function applyTranscript(result) {
   setupExplainFeature();
 }
 
-// 每完成一段就更新进度，让用户看到它在动
+// Update progress per finished chunk so the user can see it moving
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.action !== "aiCaptionProgress") return;
   if (message.videoId !== aiCaptionVideoId) return;

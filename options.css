@@ -5,8 +5,8 @@
   --border: #e4e4e7;
   --text: #18181b;
   --muted: #52525b;
-  --accent: #c2410c;
-  --accent-hover: #9a3412;
+  --accent: #ef6826;
+  --accent-hover: #d9530f;
   --danger: #9f2d2d;
 }
 
@@ -71,7 +71,7 @@ header {
 }
 
 .language-switch .language-option:focus-visible {
-  outline: 3px solid rgba(194, 65, 12, 0.28);
+  outline: 3px solid rgba(239, 104, 38, 0.28);
   outline-offset: 1px;
 }
 
@@ -138,7 +138,7 @@ textarea {
   color: var(--text);
 }
 
-/* 关掉原生外观，换成自绘的箭头，这样下拉才能和输入框长得一样 */
+/* Drop the native appearance and draw our own arrow so the select matches the inputs */
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -157,7 +157,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  outline: 3px solid rgba(194, 65, 12, 0.14);
+  outline: 3px solid rgba(239, 104, 38, 0.14);
 }
 
 textarea {
@@ -309,7 +309,7 @@ footer {
 
 }
 
-/* 模型名输入框与「获取模型」按钮同排 */
+/* Model input and Fetch models button on one row */
 .model-row {
   display: flex;
   gap: 8px;
@@ -330,7 +330,7 @@ footer {
   display: none;
 }
 
-/* 复选框与说明文字同排 */
+/* Checkbox and its label on one row */
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -343,7 +343,7 @@ footer {
   width: auto;
   flex: 0 0 auto;
   margin: 0;
-  /* 原生复选框默认是系统蓝，和橙色主题不搭 */
+  /* The native checkbox defaults to system blue, which clashes with orange */
   accent-color: var(--accent);
 }
 

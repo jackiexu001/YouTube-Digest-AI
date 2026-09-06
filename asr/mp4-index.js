@@ -1,11 +1,13 @@
 /**
- * 解析分片 MP4 的 sidx 索引表，把「第几秒」换算成「第几个字节」。
+ * Parses the sidx index of a fragmented MP4 to turn "at what second" into
+ * "at what byte".
  *
- * YouTube 的纯音频流（itag 139 一类）是分片 MP4：开头是 ftyp + moov + sidx，
- * 后面跟着一串 moof/mdat 片段。sidx 给出每个片段的字节长度和时长，
- * 于是「init 段 + 任意连续片段」就是一个可以直接解码的合法音频文件。
+ * YouTube's audio-only streams (itag 139 and friends) are fragmented MP4:
+ * ftyp + moov + sidx up front, then a run of moof/mdat fragments. The sidx
+ * gives every fragment's byte length and duration, so "init segment plus any
+ * run of consecutive fragments" is already a valid, decodable audio file.
  *
- * 这意味着按时间切片只需要字节拼接，不需要 ffmpeg。
+ * That means slicing by time is byte concatenation. No ffmpeg required.
  */
 var YTD_MP4_INDEX = (() => {
   function readBoxes(view, from, to) {
@@ -31,7 +33,7 @@ var YTD_MP4_INDEX = (() => {
   }
 
   /**
-   * @param {ArrayBuffer} buffer 至少要包含 ftyp、moov 和完整的 sidx
+   * @param {ArrayBuffer} buffer must cover ftyp, moov and the whole sidx
    * @returns {{fragments, timescale, totalSeconds, totalBytes, initLength}}
    */
   function parseInitSegment(buffer) {
@@ -39,7 +41,7 @@ var YTD_MP4_INDEX = (() => {
     const boxes = readBoxes(view, 0, buffer.byteLength);
     const sidx = boxes.find((box) => box.type === "sidx");
     if (!sidx) {
-      throw new Error("找不到 sidx 索引表，这不是分片 MP4 音频流。");
+      throw new Error("No sidx index found; this is not a fragmented MP4 audio stream.");
     }
 
     let p = sidx.offset + 8;
@@ -71,7 +73,7 @@ var YTD_MP4_INDEX = (() => {
       p += 4;
       const subsegmentDuration = view.getUint32(p);
       p += 4;
-      p += 4; // SAP 信息，切片用不到
+      p += 4; // SAP info, not needed for slicing
 
       fragments.push({
         start: byteCursor,
@@ -93,10 +95,11 @@ var YTD_MP4_INDEX = (() => {
   }
 
   /**
-   * 找出覆盖指定时间窗所需的字节范围。
+   * Finds the byte range that covers a requested time window.
    *
-   * 片段是不可分割的最小单位，所以实际取到的时间范围会略宽于请求的范围，
-   * 宁可多取也不能少取——少取意味着切口处的字被切掉。
+   * A fragment is the smallest indivisible unit, so the range actually
+   * returned is slightly wider than requested. Erring wide is deliberate:
+   * coming up short would clip words at the seam.
    */
   function selectWindow(index, { startSeconds, durationSeconds }) {
     const endSeconds = startSeconds + durationSeconds;
@@ -117,8 +120,9 @@ var YTD_MP4_INDEX = (() => {
   }
 
   /**
-   * 把整段音频切成若干块。相邻块之间重叠一小段，
-   * 让切口处的话在两块里都出现，合并时再按重叠区中点取舍。
+   * Splits the whole track into chunks that overlap slightly, so a sentence
+   * at a seam appears in both neighbours. The merge step then picks a side
+   * at the midpoint of the overlap.
    */
   function planChunks(index, { chunkSeconds, overlapSeconds }) {
     const chunks = [];

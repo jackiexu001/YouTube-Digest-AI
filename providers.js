@@ -1,28 +1,34 @@
 /**
- * AI 服务商清单与请求适配器。
+ * AI provider registry and request adapters.
  *
- * 三个适配器覆盖全部服务商：
- *   openai   — DeepSeek / OpenAI / 智谱 GLM / 豆包 / 自定义（凡是兼容 OpenAI 格式的）
- *   anthropic — Claude 系列，鉴权头和响应结构都不同
- *   gemini    — Google，网址里带模型名，响应结构又不同
+ * Three adapters cover every provider:
+ *   openai    - DeepSeek / OpenAI / Zhipu GLM / custom, anything
+ *               OpenAI-compatible
+ *   anthropic - the Claude family, with different auth headers and a
+ *               different response shape
+ *   gemini    - Google, which puts the model in the URL and returns yet
+ *               another shape
  *
- * 不含任何密钥。密钥由 options.js 存进 chrome.storage.local。
+ * Contains no keys. Those are stored in chrome.storage.local by options.js.
  */
 var YTD_PROVIDERS = (() => {
   const ANTHROPIC_VERSION = "2023-06-01";
-  // Anthropic 默认拒绝浏览器发起的请求，必须显式声明才放行。
-  // 密钥是用户自己的、存在本地，不存在「把开发者密钥暴露给访客」的风险。
+  // Anthropic rejects browser-originated requests unless this is declared.
+  // The key here is the user's own and stored locally, so the usual risk of
+  // exposing a developer key to visitors does not apply.
   const ANTHROPIC_BROWSER_HEADERS = {
     "anthropic-version": ANTHROPIC_VERSION,
     "anthropic-dangerous-direct-browser-access": "true",
   };
 
-  // baseUrl 存的是完整前缀。各家路径不一致（智谱是 /api/paas/v4 而非 /v1），
-  // 代码只负责在后面接具体端点，绝不自己拼 /v1。
+  // baseUrl stores the complete prefix. Providers disagree on the path
+  // (Zhipu uses /api/paas/v4, not /v1), so the code only appends the
+  // endpoint and never assembles /v1 itself.
   //
-  // defaultModel 核对自各家官方文档（2026-09）。模型更新很快——OpenAI 几个月
-  // 就从 gpt-5 到 gpt-5.6——所以界面提供「获取模型」按钮拉取实时列表，
-  // 这里的默认值只负责让第一次调用能跑通。
+  // defaultModel values were checked against each provider's docs (2026-09).
+  // Models move fast - OpenAI went from gpt-5 to gpt-5.6 within months - so
+  // the UI offers a Fetch models button for the live list, and these
+  // defaults exist only to make the first call succeed.
   const PROVIDERS = Object.freeze([
     {
       id: "deepseek",
@@ -31,7 +37,7 @@ var YTD_PROVIDERS = (() => {
       baseUrl: "https://api.deepseek.com",
       defaultModel: "deepseek-v4-flash",
       keyUrl: "https://platform.deepseek.com/api_keys",
-      // DeepSeek 专属：关掉推理轨迹以获得可预期的延迟。发给别家会报错。
+      // DeepSeek-only: disables reasoning traces for predictable latency. Other providers reject it.
       extraBody: { thinking: { type: "disabled" } },
     },
     {
@@ -44,9 +50,9 @@ var YTD_PROVIDERS = (() => {
     },
     {
       id: "glm",
-      label: "智谱 GLM",
+      label: "Zhipu GLM",
       adapter: "openai",
-      // 智谱用 /api/paas/v4，不是 /v1。很多工具因为自动拼 /v1 而 404
+      // Zhipu uses /api/paas/v4, not /v1. Tools that auto-append /v1 get a 404 here
       baseUrl: "https://open.bigmodel.cn/api/paas/v4",
       defaultModel: "glm-5",
       keyUrl: "https://bigmodel.cn/usercenter/apikeys",
@@ -69,12 +75,12 @@ var YTD_PROVIDERS = (() => {
     },
     {
       id: "custom",
-      // 展示文案由界面按语言翻译（providerCustom），这里只作内部标识
+      // The UI translates the display name (providerCustom); this is the internal id
       label: "Custom",
       adapter: "openai",
       baseUrl: "",
       defaultModel: "",
-      modelHint: "填写该服务商文档里给出的模型名",
+      modelHint: "Enter the model name from that provider\u0027s documentation",
       keyUrl: "",
     },
   ]);
@@ -93,7 +99,7 @@ var YTD_PROVIDERS = (() => {
     return String(url || "").replace(/\/+$/, "");
   }
 
-  // ---------- 适配器 ----------
+  // ---------- Adapters ----------
 
   const ADAPTERS = {
     openai: {
@@ -130,7 +136,7 @@ var YTD_PROVIDERS = (() => {
 
     anthropic: {
       buildRequest({ baseUrl, model, apiKey, messages, maxTokens, temperature }) {
-        // Anthropic 把系统提示放在顶层，不混在对话里
+        // Anthropic takes the system prompt at the top level, not in messages
         const system = messages
           .filter((m) => m.role === "system")
           .map((m) => m.content)
@@ -190,7 +196,7 @@ var YTD_PROVIDERS = (() => {
         if (system) body.systemInstruction = { parts: [{ text: system }] };
         if (typeof temperature === "number") body.generationConfig.temperature = temperature;
         return {
-          // 密钥走请求头。放进网址会被浏览器历史、日志和 Referer 带走。
+          // Key goes in a header. In the URL it leaks via history, logs and Referer.
           url: `${trimSlash(baseUrl)}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
           headers: {
             "Content-Type": "application/json",
@@ -212,7 +218,7 @@ var YTD_PROVIDERS = (() => {
         };
       },
       extractModels(data) {
-        // Gemini 返回 "models/gemini-3-pro"，去掉前缀才能直接填进模型名
+        // Gemini returns "models/gemini-3-pro"; strip the prefix to get a usable name
         return (data?.models || [])
           .map((m) => String(m?.name || "").replace(/^models\//, ""))
           .filter(Boolean);
@@ -260,7 +266,7 @@ var YTD_PROVIDERS = (() => {
     const provider = getProvider(providerId);
     const message = ADAPTERS[provider.adapter].extractError(data);
     if (message) return message;
-    return `${provider.label} 返回错误 ${httpStatus}`;
+    return `${provider.label} returned error ${httpStatus}`;
   }
 
   return {
