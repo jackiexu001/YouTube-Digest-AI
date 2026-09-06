@@ -280,6 +280,30 @@ const YTD_OPTIONS = (() => {
    * 做成纯函数是为了能直接测：切换服务商牵扯模型名、地址、密钥、
    * 帮助链接和按钮可用性五处联动，散在 DOM 操作里就没法验证了。
    */
+
+  /** 服务商的显示名。品牌名照原样，「自定义」是描述性文字，跟界面语言走。 */
+  function providerDisplayLabel({ providerId, language }) {
+    if (providerId === "custom") return translate(language, "providerCustom");
+    return providersApi.getProvider(providerId).label;
+  }
+
+  /**
+   * 需要代入服务商名的那几条文案。
+   *
+   * 单独拿出来是因为它们和普通文案不同：普通文案只跟语言走，
+   * 这几条还跟当前选中的服务商走。混在一起处理会导致切换语言时
+   * 把服务商名冲掉，只剩字面的 {provider}。
+   */
+  function providerCopy({ providerId, language }) {
+    const provider = providerDisplayLabel({ providerId, language });
+    return {
+      aiApiKeyLabel: translate(language, "aiApiKeyLabel", { provider }),
+      aiHelp: translate(language, "aiHelp", { provider }),
+      aiKeyLinkLabel: translate(language, "aiKeyLinkLabel", { provider }),
+      privacyNote: translate(language, "privacyNote", { provider }),
+    };
+  }
+
   function providerFormState({
     providerId,
     apiKeys = {},
@@ -433,6 +457,8 @@ const YTD_OPTIONS = (() => {
         );
       }
 
+      // 通用循环刷不到带服务商名的文案，语言切换后要再补一次
+      if (providerSelect) applyProviderCopy();
       updateLanguageButtonState(languageButtons, currentLanguage);
       for (const element of statusStates.keys()) renderStatus(element);
     }
@@ -455,25 +481,18 @@ const YTD_OPTIONS = (() => {
       aiKeyLink.hidden = !state.keyUrl;
       fetchModelsBtn.disabled = !state.canListModels;
       setStatus(modelStatus, state.canListModels ? null : "modelsUnsupported");
-      applyProviderCopy(
-        state.providerId === "custom"
-          ? translate(currentLanguage, "providerCustom")
-          : state.label,
-      );
+      applyProviderCopy();
     }
 
-    /** 文案里的服务商名随选择变化，不再写死 DeepSeek。 */
-    function applyProviderCopy(label) {
-      for (const [id, key] of [
-        ["aiApiKeyLabel", "aiApiKeyLabel"],
-        ["aiHelpText", "aiHelp"],
-        ["aiKeyLink", "aiKeyLinkLabel"],
-        ["privacyNote", "privacyNote"],
-      ]) {
-        const element = doc.getElementById(id);
-        if (element) {
-          element.textContent = translate(currentLanguage, key, { provider: label });
-        }
+    /** 把带服务商名的文案填进带 data-i18n-provider 标记的元素。 */
+    function applyProviderCopy() {
+      const copy = providerCopy({
+        providerId: providerSelect.value,
+        language: currentLanguage,
+      });
+      for (const element of doc.querySelectorAll("[data-i18n-provider]")) {
+        const value = copy[element.dataset.i18nProvider];
+        if (typeof value === "string") element.textContent = value;
       }
     }
 
@@ -644,6 +663,8 @@ const YTD_OPTIONS = (() => {
     LANGUAGE_STORAGE_KEY,
     createStorageAdapter,
     providerFormState,
+    providerDisplayLabel,
+    providerCopy,
     fetchModelList,
     ensureEndpointPermission,
     normalizeLanguage,

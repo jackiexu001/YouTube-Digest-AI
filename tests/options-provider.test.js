@@ -279,3 +279,44 @@ test("聚焦光晕用的是当前主题色，不是遗留的旧配色", () => {
   // 旧的赭红 rgba(200, 103, 79, ...) 应该已经跟着换色一起改掉
   assert.doesNotMatch(css, /rgba\(200,\s*103,\s*79/);
 });
+
+test("服务商显示名：品牌名不翻译，「自定义」跟界面语言走", () => {
+  const options = require("../options.js");
+  assert.equal(options.providerDisplayLabel({ providerId: "openai", language: "en" }), "OpenAI");
+  assert.equal(options.providerDisplayLabel({ providerId: "openai", language: "zh-CN" }), "OpenAI");
+  assert.match(options.providerDisplayLabel({ providerId: "custom", language: "en" }), /^Custom/);
+  assert.match(options.providerDisplayLabel({ providerId: "custom", language: "zh-CN" }), /^自定义/);
+});
+
+test("带服务商名的文案在两种语言下都不会残留占位符", () => {
+  const options = require("../options.js");
+  for (const language of ["en", "zh-CN"]) {
+    for (const providerId of ["deepseek", "openai", "custom", "gemini"]) {
+      const copy = options.providerCopy({ providerId, language });
+      for (const [key, value] of Object.entries(copy)) {
+        assert.doesNotMatch(value, /\{provider\}/, `${language}/${providerId} 的 ${key} 残留占位符`);
+        assert.notEqual(value, "", `${language}/${providerId} 的 ${key} 是空的`);
+      }
+    }
+  }
+});
+
+test("英文界面下不会出现中文的「自定义」字样", () => {
+  const options = require("../options.js");
+  const copy = options.providerCopy({ providerId: "custom", language: "en" });
+  for (const [key, value] of Object.entries(copy)) {
+    assert.doesNotMatch(value, /[一-龥]/, `英文界面的 ${key} 里混进了中文：${value}`);
+  }
+});
+
+test("带服务商名的文案用独立标记，不会被通用的语言刷新冲掉", () => {
+  const html = read("options.html");
+  // 这四处需要代入服务商名，不能走通用的 data-i18n 循环，
+  // 否则切换语言时会被刷成字面的 {provider}
+  for (const id of ["aiApiKeyLabel", "aiHelpText", "aiKeyLink", "privacyNote"]) {
+    const tag = html.match(new RegExp(`<[^>]*id="${id}"[^>]*>`));
+    assert.ok(tag, `找不到元素 ${id}`);
+    assert.doesNotMatch(tag[0], /\sdata-i18n="/, `${id} 不应使用通用的 data-i18n`);
+    assert.match(tag[0], /data-i18n-provider="/, `${id} 应使用 data-i18n-provider`);
+  }
+});
