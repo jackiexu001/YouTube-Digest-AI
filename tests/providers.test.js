@@ -230,3 +230,26 @@ test("每个服务商都能给出获取密钥的官方页面地址", () => {
     assert.match(p.keyUrl, /^https:\/\//, `${p.id} 缺少获取密钥的链接`);
   }
 });
+
+test("每个用到 settings.js 的页面都先加载 providers.js", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (n) => fs.readFileSync(path.join(__dirname, "..", n), "utf8");
+
+  for (const page of ["options.html", "sidepanel.html"]) {
+    const html = read(page);
+    const providersAt = html.indexOf('src="providers.js"');
+    const settingsAt = html.indexOf('src="settings.js"');
+    assert.notEqual(providersAt, -1, `${page} 没有加载 providers.js`);
+    // settings.js 依赖 YTD_PROVIDERS，加载顺序反了会直接报错
+    assert.ok(providersAt < settingsAt, `${page} 里 providers.js 必须排在 settings.js 前面`);
+  }
+
+  // service worker 同理
+  const background = read("background.js");
+  assert.ok(
+    background.indexOf('importScripts("providers.js")') <
+      background.indexOf('importScripts("settings.js")'),
+    "background.js 里 providers.js 必须排在 settings.js 前面",
+  );
+});

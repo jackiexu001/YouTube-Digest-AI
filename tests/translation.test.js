@@ -73,7 +73,7 @@ function loadSidepanelHelpers({
 function loadBackgroundHelpers({
   settings = {
     provider: "deepseek",
-    aiApiKey: "test-key",
+    aiApiKeys: { deepseek: "test-key" },
     aiBaseUrl: "https://api.deepseek.com",
     aiModel: "deepseek-v4-flash",
   },
@@ -127,12 +127,11 @@ function loadBackgroundHelpers({
       },
       tabs: { onUpdated: listeners, onActivated: listeners },
     },
+    YTD_PROVIDERS: require("../providers.js"),
     YTD_SETTINGS: {
-      STORAGE_KEY: "ytd_settings",
+      ...require("../settings.js"),
+      // 这些测试直接喂固定的 settings，不需要走归一化
       normalize: (value) => value,
-      chatCompletionsUrl: (baseUrl) => `${baseUrl}/chat/completions`,
-      canonicalYouTubeUrl: (videoId) =>
-        `https://www.youtube.com/watch?v=${videoId}`,
     },
   };
   sandbox.globalThis = sandbox;

@@ -27,6 +27,7 @@ fail() {
 public_allowlist=(
   "manifest.json"
   "background.js"
+  "providers.js"
   "settings.js"
   "content.js"
   "sidepanel.html"
@@ -52,6 +53,7 @@ public_allowlist=(
 required_public_files=(
   "manifest.json"
   "background.js"
+  "providers.js"
   "settings.js"
   "content.js"
   "sidepanel.html"

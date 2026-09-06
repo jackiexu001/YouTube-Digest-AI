@@ -13,6 +13,7 @@
 
 // Import safe defaults and validation helpers. Secret keys live in
 // chrome.storage.local and are never part of the extension source.
+importScripts("providers.js");
 importScripts("settings.js");
 
 const DEBUG = false;
@@ -79,24 +80,27 @@ async function requestAiCompletion({
   responseFormat,
 }) {
   const settings = await getSettings();
-  if (!settings.aiApiKey) {
+  const provider = YTD_PROVIDERS.getProvider(settings.provider);
+  const apiKey = YTD_SETTINGS.activeApiKey(settings);
+  if (!apiKey) {
     const error = new Error(
-      "DeepSeek API key not configured. Open YouTube Digest Settings.",
+      `${provider.label} API key not configured. Open YouTube Digest AI Settings.`,
     );
     error.code = "NO_AI_KEY";
     throw error;
   }
-  const body = {
+  // 请求的具体形状由服务商适配器决定：各家的地址、鉴权头、
+  // 请求结构都不同，这里只提供内容，不关心格式。
+  const request = YTD_PROVIDERS.buildRequest({
+    providerId: settings.provider,
+    baseUrl: settings.aiBaseUrl,
     model: settings.aiModel,
-    max_tokens: maxTokens,
+    apiKey,
     messages,
-  };
-  if (typeof temperature === "number") body.temperature = temperature;
-  if (responseFormat) {
-    body.response_format = responseFormat;
-  }
-  // Product features need bounded, predictable latency rather than reasoning traces.
-  body.thinking = { type: "disabled" };
+    maxTokens,
+    temperature,
+    responseFormat,
+  });
 
   const controller = new AbortController();
   let timeoutKind = "";
@@ -121,37 +125,28 @@ async function requestAiCompletion({
   );
   resetIdleTimeout();
   try {
-    const response = await fetch(
-      YTD_SETTINGS.chatCompletionsUrl(),
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${settings.aiApiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      },
-    );
-    // Receiving headers proves DeepSeek is still making progress. DeepSeek
-    // may then send blank-line body chunks while a non-streaming request queues.
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      signal: controller.signal,
+    });
+    // 收到响应头说明服务商仍在推进。有些服务商会在排队时
+    // 先发空白的响应体分块，所以这里重置的是「无活动」计时器。
     resetIdleTimeout();
 
     const data = await readBoundedAiResponse(response, resetIdleTimeout);
     if (!response.ok) {
-      const errorData = data && typeof data === "object" ? data : {};
       const error = new Error(
-        errorData.error?.message ||
-          errorData.message ||
-          `DeepSeek error: ${response.status}`,
+        YTD_PROVIDERS.extractError(settings.provider, data, response.status),
       );
       error.status = response.status;
       throw error;
     }
 
-    const text = data.choices?.[0]?.message?.content;
+    const text = YTD_PROVIDERS.extractText(settings.provider, data);
     if (typeof text !== "string" || !text.trim()) {
-      const error = new Error("DeepSeek returned an empty response.");
+      const error = new Error(`${provider.label} returned an empty response.`);
       error.code = "EMPTY_AI_RESPONSE";
       throw error;
     }
@@ -160,14 +155,14 @@ async function requestAiCompletion({
   } catch (error) {
     if (timeoutKind === "idle") {
       const timeoutError = new Error(
-        "DeepSeek request was inactive for 50 seconds. Please Retry.",
+        `${provider.label} request was inactive for 50 seconds. Please Retry.`,
       );
       timeoutError.code = "AI_IDLE_TIMEOUT";
       throw timeoutError;
     }
     if (timeoutKind === "hard") {
       const timeoutError = new Error(
-        "DeepSeek request exceeded the 120-second limit. Please Retry.",
+        `${provider.label} request exceeded the 120-second limit. Please Retry.`,
       );
       timeoutError.code = "AI_HARD_TIMEOUT";
       throw timeoutError;
@@ -438,7 +433,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((settings) =>
         sendResponse({
           hasSupadataKey: !!settings.supadataApiKey,
-          hasAiKey: !!settings.aiApiKey,
+          hasAiKey: !!YTD_SETTINGS.activeApiKey(settings),
         }),
       )
       .catch((error) => sendResponse({ error: error.message }));
@@ -917,11 +912,11 @@ async function handleAnalyzeTranscript(
 ) {
   try {
     const settings = await getSettings();
-    if (!settings.aiApiKey) {
+    if (!YTD_SETTINGS.activeApiKey(settings)) {
       return {
         success: false,
         error: "NO_AI_KEY",
-        message: "DeepSeek API key not configured. Open YouTube Digest Settings.",
+        message: `${YTD_PROVIDERS.getProvider(settings.provider).label} API key not configured. Open YouTube Digest AI Settings.`,
       };
     }
 
@@ -1326,7 +1321,7 @@ async function cleanupNoteText(
   videoTitle,
 ) {
   const settings = await getSettings();
-  if (!settings.aiApiKey) {
+  if (!YTD_SETTINGS.activeApiKey(settings)) {
     return [beforeText, targetText, afterText].filter(Boolean).join(" ");
   }
 
@@ -1449,11 +1444,11 @@ async function handleExplainSelection(
 ) {
   try {
     const settings = await getSettings();
-    if (!settings.aiApiKey) {
+    if (!YTD_SETTINGS.activeApiKey(settings)) {
       return {
         success: false,
         error: "NO_AI_KEY",
-        message: "DeepSeek API key not configured.",
+        message: `${YTD_PROVIDERS.getProvider(settings.provider).label} API key not configured.`,
       };
     }
 
@@ -1620,8 +1615,11 @@ async function handleTranslateContent(
     }
 
     const settings = await getSettings();
-    if (!settings.aiApiKey) {
-      return { success: false, error: "DeepSeek API key not configured" };
+    if (!YTD_SETTINGS.activeApiKey(settings)) {
+      return {
+        success: false,
+        error: `${YTD_PROVIDERS.getProvider(settings.provider).label} API key not configured`,
+      };
     }
 
     const sourceSegments = validateTranscriptBatchRequest(content);
