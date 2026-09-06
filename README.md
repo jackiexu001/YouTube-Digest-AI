@@ -91,12 +91,18 @@ See the [official DeepSeek API documentation](https://api-docs.deepseek.com/) fo
 
 Open **Settings** from the side panel. You can also open the YouTube Digest **Options** page from its card at `chrome://extensions` or by right-clicking its toolbar icon. Paste keys only into these Settings fields. Never paste a key into an AI chat, repository file, screenshot, or public message.
 
-The published version supports DeepSeek V4 Flash as its only AI provider:
+Pick an AI provider in Settings and paste that provider's key. Keys are stored separately per provider, so you can switch back and forth without re-entering them.
 
-```text
-Base URL: https://api.deepseek.com
-Model: deepseek-v4-flash
-```
+| Provider | Default model |
+| --- | --- |
+| DeepSeek (default) | `deepseek-v4-flash` |
+| OpenAI | `gpt-5.6` |
+| Zhipu GLM | `glm-5` |
+| Anthropic Claude | `claude-opus-5` |
+| Google Gemini | `gemini-3.8-flash` |
+| Custom | you enter the endpoint and model |
+
+Models change often, so these defaults only exist to make the first call work. Once a key is saved, use **Fetch models** to pull that provider's current list. If the button reports that a provider has no model list, type the model name yourself.
 
 YouTube Digest sends every DeepSeek request in non-thinking mode for responsive, predictable interactions. The endpoint and model are fixed in Settings, so the only AI credential you enter is your DeepSeek API key. To use another provider or model, copy the safe customization prompt in Settings and give it to a coding agent for your local copy. Never add an API key to that prompt or chat.
 
@@ -119,7 +125,7 @@ Keys and settings are stored in Chrome's local extension storage on your device.
 - Original, Simplified Chinese, and aligned bilingual transcript views.
 - AI overviews, selected-text explanations, translation, and automatic note polishing.
 - Local notes and a local cache for recent transcript and digest results.
-- DeepSeek V4 Flash for all published AI features. Other providers require a local code adaptation and are not supported by this published version.
+- Your choice of DeepSeek, OpenAI, Zhipu GLM, Anthropic Claude, Google Gemini, or any OpenAI-compatible endpoint for AI features.
 
 Shorts, live streams, private or access-restricted videos, and videos without an available native transcript may not work. Firefox, Safari, mobile browsers, and other Chromium browsers are not currently tested or supported.
 
@@ -139,7 +145,7 @@ With the current native-only behavior, the free tier can cover roughly 100 trans
 
 DeepSeek usage is separate from Supadata. YouTube Digest does not collect payments or resell access. Set spending limits and monitor both accounts.
 
-## DeepSeek V4 Flash pricing
+## AI provider pricing
 
 As of August 27, 2026, DeepSeek lists these USD prices per 1 million tokens on its official [pricing page](https://api-docs.deepseek.com/quick_start/pricing/):
 
@@ -206,9 +212,9 @@ There is no YouTube Digest account system, advertising, analytics, or telemetry.
 
 ### YouTube Digest asks for setup
 
-- Open **Settings** and save both a Supadata key and a DeepSeek key.
-- This published version uses the fixed DeepSeek V4 Flash endpoint and model. There are no Base URL or Model fields to configure.
-- If Settings says a legacy custom provider was removed, enter a DeepSeek key. The old AI key was cleared so it could not be reused with the wrong service.
+- Open **Settings** and save both a Supadata key and a key for the AI provider you selected.
+- Check that the model name matches one the provider actually offers. Use **Fetch models** to see the current list.
+- If you selected **Custom**, Chrome asks for permission to reach that address when you save. Declining cancels the save.
 
 ### No transcript is found
 

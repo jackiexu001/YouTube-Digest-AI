@@ -93,12 +93,18 @@ YouTube Digest 需要你在自己的服务账号中准备两个 Key：
 
 在侧边栏中打开 **Settings**。你也可以在 `chrome://extensions` 的 YouTube Digest 卡片中打开扩展选项。Key 只能粘贴到这些设置输入框中。不要把 Key 发送到 AI 对话、项目文件、截图或公开消息中。
 
-发布版本只支持 DeepSeek V4 Flash：
+在设置里选一个 AI 服务商，填上那一家的 Key。每家的 Key 分开保存，来回切换不用重填。
 
-```text
-Base URL: https://api.deepseek.com
-Model: deepseek-v4-flash
-```
+| 服务商 | 默认模型 |
+| --- | --- |
+| DeepSeek（默认） | `deepseek-v4-flash` |
+| OpenAI | `gpt-5.6` |
+| 智谱 GLM | `glm-5` |
+| Anthropic Claude | `claude-opus-5` |
+| Google Gemini | `gemini-3.8-flash` |
+| 自定义 | 自己填接口地址和模型名 |
+
+模型更新很快，上面的默认值只负责让第一次调用能跑通。填好 Key 后点 **获取模型** 拉取该服务商当前的真实列表。如果提示这家没有模型列表接口，自己填模型名即可。
 
 YouTube Digest 会让所有 DeepSeek 请求使用非思考模式，以获得更快、更稳定的交互。设置中的接口地址和模型固定，只需要填写 DeepSeek API Key。如果想使用其他服务或模型，请在设置中复制安全的自定义 prompt，让编程 Agent 修改你自己的本地副本。不要把任何 API Key 放进 prompt 或对话。
 
@@ -121,7 +127,7 @@ API Key 和设置保存在你设备上的 Chrome 扩展本地存储中。发布�
 - 原文、简体中文和双语对照字幕。
 - AI 概览、选中文本讲解、翻译和自动润色笔记。
 - 本地笔记，以及最近字幕、概览和翻译的本地缓存。
-- 发布版本的所有 AI 功能都使用 DeepSeek V4 Flash。其他服务需要修改本地代码，不属于发布版本的支持范围。
+- AI 功能可以选用 DeepSeek、OpenAI、智谱 GLM、Anthropic Claude、Google Gemini，或任何兼容 OpenAI 格式的接口。
 
 Shorts、直播、私密视频、受访问限制的视频，以及没有原生字幕的视频可能无法使用。目前没有测试 Firefox、Safari、移动浏览器或其他 Chromium 浏览器。
 
@@ -141,7 +147,7 @@ YouTube Digest 强制使用 Supadata 的 `mode=native`，不会在没有原生�
 
 DeepSeek 的额度与 Supadata 分开计算。YouTube Digest 不收款，也不转售 API 服务。建议为两个账号设置消费上限并定期查看用量。
 
-## DeepSeek V4 Flash 价格
+## AI 服务商价格
 
 截至 2026 年 8 月 27 日，DeepSeek 官方[价格页面](https://api-docs.deepseek.com/quick_start/pricing/)列出的每 100 万 token 美元价格如下：
 
@@ -208,9 +214,9 @@ YouTube Digest 没有账号系统、广告、分析统计或行为追踪。Supad
 
 ### YouTube Digest 提示需要设置
 
-- 打开 **Settings**，保存 Supadata Key 和 DeepSeek Key。
-- 发布版本固定使用 DeepSeek V4 Flash，没有需要填写的 Base URL 或 Model 字段。
-- 如果设置提示旧的自定义服务已移除，请重新填写 DeepSeek Key。旧 AI Key 已安全清除，避免被错误用于 DeepSeek。
+- 打开 **Settings**，保存 Supadata Key 和所选 AI 服务商的 Key。
+- 确认模型名是该服务商真实提供的。可以点 **获取模型** 查看当前列表。
+- 如果选的是 **自定义**，保存时 Chrome 会询问是否允许访问该地址。拒绝则不会保存。
 
 ### 找不到字幕
 

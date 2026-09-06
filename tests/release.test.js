@@ -164,12 +164,50 @@ test("release copy documents current scope without em dashes", () => {
     read("PRIVACY.md"),
     read("SECURITY.md"),
   ].join("\n");
-  assert.doesNotMatch(publishedDocs, /custom OpenAI-compatible/i);
-  assert.doesNotMatch(publishedDocs, /optional custom-origin/i);
-  assert.doesNotMatch(publishedDocs, /chosen AI provider/i);
-  assert.doesNotMatch(publishedDocs, /configure a different OpenAI-compatible/i);
-  assert.match(readme, /published version supports DeepSeek V4 Flash as its only AI provider/i);
-  assert.match(chineseReadme, /发布版本只支持 DeepSeek V4 Flash/);
+  // 与上游相反的方向：上游刻意保证文档不提「可换服务商」，我们支持多家，
+  // 因此文档必须如实说明数据会发往用户选择的那一家。
+  const privacy = read("PRIVACY.md");
+
+  // 隐私文档不能再宣称只发给 DeepSeek——那是错的，会误导用户
+  assert.doesNotMatch(
+    privacy,
+    /only AI provider|唯一的 AI 服务商/i,
+    "隐私文档仍在宣称只有一家 AI 服务商",
+  );
+  // 必须列出所有可能收到数据的服务商
+  for (const name of ["OpenAI", "Anthropic", "Gemini", "DeepSeek"]) {
+    assert.match(privacy, new RegExp(name), `隐私文档没有提到 ${name}`);
+  }
+  // 自定义服务商会把数据发到用户填的任意地址，这一点必须说清楚
+  assert.match(privacy, /custom|自定义/i);
+  // 运行时申请的可选权限也必须说明
+  assert.match(privacy, /optional_host_permissions|optional host/i);
+  // 已移除的「交给编程 Agent 改代码」流程不该再出现在文档里
+  assert.doesNotMatch(privacy, /coding-agent prompt|coding agent prompt/i);
+
+  // 两个 README 同样不能再宣称只有一家服务商，或让用户改代码去换模型
+  for (const [name, doc] of [["README.md", readme], ["README.zh-CN.md", chineseReadme]]) {
+    assert.doesNotMatch(doc, /only AI provider/i, `${name} 仍宣称只有一家 AI 服务商`);
+    assert.doesNotMatch(doc, /只支持 DeepSeek/, `${name} 仍宣称只支持 DeepSeek`);
+    assert.doesNotMatch(
+      doc,
+      /require a local code adaptation|需要修改本地代码/,
+      `${name} 仍让用户改代码才能换服务商`,
+    );
+    assert.doesNotMatch(
+      doc,
+      /no Base URL or Model fields|没有需要填写的 Base URL/i,
+      `${name} 仍说没有模型和地址可填`,
+    );
+  }
+
+  // SECURITY.md 列出的网络目标要覆盖全部服务商，否则安全承诺是错的
+  const security = read("SECURITY.md");
+  assert.doesNotMatch(
+    security,
+    /YouTube, Supadata, and DeepSeek hosts/i,
+    "SECURITY.md 的网络目标清单没有跟上多服务商",
+  );
 });
 
 test("product UI contains no emoji or emoji-like pictographs", () => {
