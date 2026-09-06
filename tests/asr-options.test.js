@@ -124,3 +124,18 @@ test("文本模型与语音识别的文案键不重名，否则两块会互相�
 test("复选框用主题色而不是浏览器默认的蓝", () => {
   assert.match(read("options.css"), /accent-color:\s*var\(--accent\)/);
 });
+
+test("设置页有自动生成开关，且默认不勾选", () => {
+  const html = read("options.html");
+  const tag = html.match(/<input[^>]*id="aiCaptionsAutoStart"[^>]*>/);
+  assert.ok(tag, "找不到自动生成开关");
+  assert.doesNotMatch(tag[0], /\schecked/, "自动生成不该默认勾选");
+});
+
+test("自动生成的文案说清了它会绕过确认", () => {
+  for (const language of ["en", "zh-CN"]) {
+    const value = options.translate(language, "aiCaptionsAutoToggle");
+    assert.ok(value, `${language} 缺少自动生成的文案`);
+    assert.match(value, /confirm|询问|确认|ask/i, `${language} 的文案没说清会跳过确认`);
+  }
+});

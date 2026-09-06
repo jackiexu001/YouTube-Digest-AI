@@ -92,3 +92,21 @@ test("取字幕时把 tabId 传给后台，否则三层逻辑退化成单层", (
   // 后台没有 tabId 就无法在页面环境里取播放器信息，会直接退回 Supadata
   assert.match(read("sidepanel.js"), /action: "fetchTranscript"[\s\S]{0,120}tabId/);
 });
+
+test("自动生成时仍先显示费用与额度，只是不用点确认", () => {
+  const panelSource = read("sidepanel.js");
+  // 自动开始的调用必须排在费用文案填好之后，否则用户永远看不到花了多少
+  const summaryAt = panelSource.indexOf('getElementById("aiCaptionSummary")');
+  const autoAt = panelSource.indexOf("info.autoStart");
+  assert.notEqual(autoAt, -1, "没有实现自动开始");
+  assert.ok(summaryAt < autoAt, "自动开始不能早于费用显示");
+});
+
+test("没配密钥时即使开了自动生成也不会启动", () => {
+  const panelSource = read("sidepanel.js");
+  assert.match(
+    panelSource,
+    /prompt\.canStart\s*&&\s*info\.autoStart/,
+    "自动开始必须同时满足「能开始」，否则会反复触发一个必然失败的操作",
+  );
+});

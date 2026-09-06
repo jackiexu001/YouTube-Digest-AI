@@ -52,3 +52,15 @@ test("没配识别密钥时 activeAsrApiKey 返回空串而不是 undefined", ()
   assert.equal(settings.activeAsrApiKey(settings.normalize({})), "");
   assert.equal(settings.activeAsrApiKey({}), "");
 });
+
+test("自动生成默认关闭，必须用户主动打开", () => {
+  // 这一步会真实花钱，默认自动开始等于替用户做了花钱的决定
+  assert.equal(settings.normalize({}).aiCaptionsAutoStart, false);
+  assert.equal(settings.normalize({ aiCaptionsAutoStart: true }).aiCaptionsAutoStart, true);
+});
+
+test("总开关关掉时，自动生成也必须跟着失效", () => {
+  // 否则会出现「AI 字幕已关闭，却仍然自动扣费」这种自相矛盾的状态
+  const off = settings.normalize({ aiCaptionsEnabled: false, aiCaptionsAutoStart: true });
+  assert.equal(off.aiCaptionsAutoStart, false);
+});

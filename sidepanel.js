@@ -1416,6 +1416,10 @@ function showAiCaptionPrompt(videoId, info) {
   button.onclick = prompt.canStart
     ? () => startAiCaptions(videoId)
     : () => chrome.runtime.sendMessage({ action: "openOptions" });
+
+  // 用户在设置里打开了自动生成就直接开始。仍然先把费用和额度显示出来，
+  // 这样即使不需要点击，也能看到这次花了多少
+  if (prompt.canStart && info.autoStart) startAiCaptions(videoId);
 }
 
 async function startAiCaptions(videoId) {

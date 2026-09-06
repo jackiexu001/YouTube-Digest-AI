@@ -34,6 +34,8 @@ const YTD_OPTIONS = (() => {
       asrApiKeyLabel: "{provider} API key",
       asrKeyLinkLabel: "Create a {provider} API key",
       aiCaptionsToggle: "Offer AI captions for videos without subtitles",
+      aiCaptionsAutoToggle:
+        "Start generating without asking (skips the cost confirmation)",
       aiCaptionsNote:
         "This costs money and is never started without your confirmation. The side panel shows the length, the estimated cost, and how much of the hourly free allowance it uses before you decide.",
       providerLabel: "Provider",
@@ -104,6 +106,7 @@ const YTD_OPTIONS = (() => {
       asrApiKeyLabel: "{provider} API 密钥",
       asrKeyLinkLabel: "创建 {provider} API 密钥",
       aiCaptionsToggle: "为没有字幕的视频提供 AI 字幕",
+      aiCaptionsAutoToggle: "直接开始生成，不再询问（跳过费用确认）",
       aiCaptionsNote:
         "这会真实产生费用，而且不经你确认绝不会启动。侧边栏会先告诉你视频时长、预计费用，以及会用掉本小时免费额度的多少。",
       providerLabel: "服务商",
@@ -465,6 +468,7 @@ const YTD_OPTIONS = (() => {
     const asrKeyLink = doc.getElementById("asrKeyLink");
     const asrFields = doc.getElementById("asrFields");
     const aiCaptionsToggle = doc.getElementById("aiCaptionsEnabled");
+    const aiCaptionsAutoToggle = doc.getElementById("aiCaptionsAutoStart");
     // 识别服务商的密钥同样按服务商分开记，切换不会互相覆盖
     const asrKeysByProvider = {};
     // 每个服务商的密钥单独记着，切换时不会互相覆盖
@@ -623,7 +627,12 @@ const YTD_OPTIONS = (() => {
 
     function applyCaptionsToggle() {
       // 关掉总开关时把相关字段一起收起来，避免让人以为还要填
-      asrFields.hidden = !aiCaptionsToggle.checked;
+      const on = aiCaptionsToggle.checked;
+      asrFields.hidden = !on;
+      // 总开关关掉时，自动生成也不该还能勾选
+      aiCaptionsAutoToggle.disabled = !on;
+      if (!on) aiCaptionsAutoToggle.checked = false;
+      aiCaptionsAutoToggle.closest(".checkbox-row").hidden = !on;
     }
 
     async function loadSettings() {
@@ -642,6 +651,7 @@ const YTD_OPTIONS = (() => {
         });
         Object.assign(asrKeysByProvider, settings.asrApiKeys || {});
         aiCaptionsToggle.checked = settings.aiCaptionsEnabled;
+        aiCaptionsAutoToggle.checked = settings.aiCaptionsAutoStart;
         applyCaptionsToggle();
         applyAsrProvider(settings.asrProvider, { savedModel: settings.asrModel });
         if (migration.migrated) {
@@ -677,6 +687,7 @@ const YTD_OPTIONS = (() => {
         asrModel: asrModelInput.value,
         asrApiKeys: asrKeysByProvider,
         aiCaptionsEnabled: aiCaptionsToggle.checked,
+        aiCaptionsAutoStart: aiCaptionsAutoToggle.checked,
         supadataApiKey: supadataApiKeyInput.value,
       });
 

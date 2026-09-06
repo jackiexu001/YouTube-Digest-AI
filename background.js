@@ -1036,6 +1036,7 @@ async function handleFetchTranscript(videoId, tabId) {
       message: "This video has no subtitles.",
       aiCaptions: {
         available: !!YTD_SETTINGS.activeAsrApiKey(settings),
+        autoStart: settings.aiCaptionsAutoStart,
         durationSeconds: seconds,
         estimatedUsd: YTD_ASR_PROVIDERS.estimateCost({
           providerId: settings.asrProvider,

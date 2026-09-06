@@ -29,6 +29,7 @@ var YTD_SETTINGS = (() => {
     asrModel: asrApi.getProvider(DEFAULT_ASR_PROVIDER).defaultModel,
     asrApiKeys: Object.freeze({}),
     aiCaptionsEnabled: true,
+    aiCaptionsAutoStart: false,
     supadataApiKey: "",
   });
 
@@ -88,6 +89,11 @@ var YTD_SETTINGS = (() => {
       asrApiKeys: pickKeys(input.asrApiKeys, KNOWN_ASR_PROVIDERS),
       // 没有明确关掉就算开着：这是本项目相对上游新增的核心能力
       aiCaptionsEnabled: input.aiCaptionsEnabled !== false,
+      // 自动生成默认关闭：这一步会真实花钱，默认自动开始等于
+      // 替用户做了花钱的决定。总开关关掉时它也必须跟着失效，
+      // 否则会出现「AI 字幕已关闭却仍在自动扣费」这种自相矛盾的状态
+      aiCaptionsAutoStart:
+        input.aiCaptionsEnabled !== false && input.aiCaptionsAutoStart === true,
       supadataApiKey: text(input.supadataApiKey),
     };
   }
