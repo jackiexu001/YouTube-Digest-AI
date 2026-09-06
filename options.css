@@ -1,12 +1,12 @@
 :root {
   color-scheme: light;
-  --bg: #f7f3ec;
+  --bg: #f4f4f5;
   --surface: #ffffff;
-  --border: #e7dfd2;
-  --text: #2e2a24;
-  --muted: #6b6258;
-  --accent: #c8674f;
-  --accent-hover: #ad523e;
+  --border: #e4e4e7;
+  --text: #18181b;
+  --muted: #52525b;
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
   --danger: #9f2d2d;
 }
 
@@ -199,93 +199,6 @@ a {
   font-weight: 800;
 }
 
-.customization-card {
-  padding: 0;
-  border-color: #ddc2b7;
-  background: linear-gradient(145deg, #fff 0%, #fff9f6 100%);
-  overflow: hidden;
-}
-
-.customization-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  padding: 17px 22px;
-  border-radius: 17px;
-  cursor: pointer;
-  list-style: none;
-  transition: background 0.18s ease;
-}
-
-.customization-summary::-webkit-details-marker {
-  display: none;
-}
-
-.customization-summary::after {
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--accent-hover);
-  border-bottom: 2px solid var(--accent-hover);
-  content: "";
-  transform: rotate(45deg);
-  transition: transform 0.18s ease;
-}
-
-.customization-card[open] .customization-summary::after {
-  transform: rotate(225deg);
-}
-
-.customization-summary:hover {
-  background: #fdf3ee;
-}
-
-.customization-summary:focus-visible {
-  outline: 3px solid rgba(200, 103, 79, 0.28);
-  outline-offset: -3px;
-}
-
-.customization-summary-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.customization-title {
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.customization-purpose {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.customization-content {
-  padding: 19px 22px 22px;
-  border-top: 1px solid #ead8d0;
-}
-
-.customization-intro {
-  max-width: 650px;
-  margin: 0;
-  font-size: 14px;
-}
-
-.customization-steps {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0 18px;
-  padding-left: 22px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.customization-steps li {
-  padding-left: 4px;
-}
-
 .prompt-reminder {
   margin: 8px 0 10px;
   padding: 10px 12px;
@@ -376,27 +289,4 @@ footer {
     padding-inline: 8px;
   }
 
-  .customization-card {
-    padding: 0;
-  }
-
-  .customization-summary {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    padding: 15px 17px;
-  }
-
-  .customization-summary::after {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
-
-  .customization-summary .agent-badge {
-    grid-column: 1;
-    justify-self: start;
-  }
-
-  .customization-content {
-    padding: 17px;
-  }
 }

@@ -1,6 +1,11 @@
-# YouTube Digest
+# YouTube Digest AI
 
 [English](README.md) | [简体中文](README.zh-CN.md)
+
+> **YouTube Digest AI** 是 Zara Zhang 的 [YouTube Digest](https://github.com/zarazhangrui/youtube-digest)
+> 的二次创作版本，依据 MIT 许可证使用。它保留原项目的全部功能，并加入了自研 AI 字幕，
+> 让完全没有字幕的视频也能使用。
+> 原项目与本项目无关，也不为本项目提供支持。
 
 把每个 YouTube 视频变成一份可以深入学习的资料。YouTube Digest 把字幕、双语翻译、AI 概览、内容讲解和时间戳笔记放进同一个 Chrome 侧边栏，让你可以持续学习视频中的知识和语言，同时不丢失原视频上下文。
 

@@ -1,11 +1,11 @@
 /*
- * SIDE PANEL STYLES — "Calm Terracotta" (Light Mode)
+ * SIDE PANEL STYLES — "Quiet Ember" (Light Mode)
  *
  * Design philosophy:
  * - Warm, editorial, unhurried. The opposite of shouty.
- * - Soft cream paper background; white cards float on it with gentle shadows.
+ * - Soft neutral background; white cards float on it with gentle shadows.
  * - Rounded corners everywhere (no sharp brutalist edges).
- * - Terracotta is the single warm accent, used sparingly; sage is a quiet
+ * - Burnt orange is the single warm accent, used sparingly; sage is a quiet
  *   secondary. Red is gone.
  * - Fully sans-serif, using system fonts so the extension makes no font
  *   requests to third parties.
@@ -15,29 +15,29 @@
    CSS VARIABLES (design tokens)
    ============================================================ */
 :root {
-  /* Surfaces & ink — all warm-toned, never pure grey */
-  --bg: #f7f3ec;
+  /* Surfaces & ink — neutral ground so the ember accent carries the warmth */
+  --bg: #f4f4f5;
   --surface: #ffffff;
-  --surface-raised: #fbf8f2;
-  --border: #ece5d9;
-  --border-heavy: #ddd4c4;
-  --text: #2e2a24;
-  --text-secondary: #6b6258;
-  --text-muted: #a39a8d;
+  --surface-raised: #fafafa;
+  --border: #e4e4e7;
+  --border-heavy: #d4d4d8;
+  --text: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #8b8b93;
 
   /* Accents */
-  --accent: #c8674f; /* terracotta */
-  --accent-hover: #b25742;
-  --accent-dim: rgba(200, 103, 79, 0.1);
+  --accent: #c2410c; /* burnt orange — 白字对比度 5.18，达 WCAG AA */
+  --accent-hover: #9a3412;
+  --accent-dim: rgba(194, 65, 12, 0.1);
   --sage: #7c8b6f; /* quiet secondary */
   --sage-dim: rgba(124, 139, 111, 0.14);
   --success: #7c8b6f;
-  --highlight: #d99a5b;
+  --highlight: #ef6826; /* 品牌鲜橙，仅用于装饰，不承载文字 */
 
   /* Soft shadows give depth instead of heavy borders */
-  --shadow-sm: 0 1px 3px rgba(90, 80, 60, 0.06);
-  --shadow-md: 0 4px 16px rgba(90, 80, 60, 0.1);
-  --shadow-lg: 0 16px 48px rgba(50, 42, 32, 0.22);
+  --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.06);
+  --shadow-md: 0 4px 16px rgba(24, 24, 27, 0.1);
+  --shadow-lg: 0 16px 48px rgba(24, 24, 27, 0.22);
 
   /* Rounding scale */
   --r-sm: 8px;

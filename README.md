@@ -1,6 +1,11 @@
-# YouTube Digest
+# YouTube Digest AI
 
 [English](README.md) | [简体中文](README.zh-CN.md)
+
+> **YouTube Digest AI** is a derivative of [YouTube Digest](https://github.com/zarazhangrui/youtube-digest)
+> by Zara Zhang, used under the MIT License. It keeps every original feature and adds
+> self-built AI captions for videos that have no subtitles at all.
+> The original project is not affiliated with this fork and does not support it.
 
 Turn every YouTube video into a resource for deep learning. YouTube Digest brings transcripts, bilingual translation, AI overviews, explanations, and timestamped notes into one Chrome side panel, so you can study ideas and language without losing your place.
 
