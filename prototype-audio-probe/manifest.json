@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "音频探针（一次性验证工具）",
+  "version": "0.0.1",
+  "description": "验证 Chrome 扩展能否拿到 YouTube 纯音频流、按时间切片、并送去识别。验证完即可删除。",
+  "minimum_chrome_version": "116",
+  "permissions": ["webRequest", "scripting", "tabs", "storage"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://*.googlevideo.com/*",
+    "https://api.groq.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "音频探针" }
+}
