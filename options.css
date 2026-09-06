@@ -71,7 +71,7 @@ header {
 }
 
 .language-switch .language-option:focus-visible {
-  outline: 3px solid rgba(200, 103, 79, 0.28);
+  outline: 3px solid rgba(194, 65, 12, 0.28);
   outline-offset: 1px;
 }
 
@@ -121,12 +121,14 @@ label {
 }
 
 input,
+select,
 textarea,
 button {
   font: inherit;
 }
 
 input,
+select,
 textarea {
   width: 100%;
   padding: 11px 12px;
@@ -136,10 +138,26 @@ textarea {
   color: var(--text);
 }
 
+/* 关掉原生外观，换成自绘的箭头，这样下拉才能和输入框长得一样 */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2352525b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+select:hover {
+  border-color: var(--border-strong, #d4d4d8);
+}
+
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--accent);
-  outline: 3px solid rgba(200, 103, 79, 0.14);
+  outline: 3px solid rgba(194, 65, 12, 0.14);
 }
 
 textarea {

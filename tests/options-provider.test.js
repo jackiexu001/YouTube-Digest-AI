@@ -263,3 +263,19 @@ test("「自定义」是描述性文字，要跟着界面语言走；品牌名�
   // custom 的 label 不承载展示文案，展示交给 providerCustom
   assert.doesNotMatch(byId.custom.label, /自定义/);
 });
+
+test("服务商下拉与输入框共用同一套外观", () => {
+  const css = read("options.css");
+  // select 必须和 input 一起被样式覆盖，否则会退回浏览器默认外观
+  assert.match(css, /input,\s*\n\s*select,\s*\n\s*textarea\s*\{/);
+  // 关掉原生外观才能自定义样式
+  assert.match(css, /appearance:\s*none/);
+  // 自绘的下拉箭头
+  assert.match(css, /select\s*\{[^}]*background-image/s);
+});
+
+test("聚焦光晕用的是当前主题色，不是遗留的旧配色", () => {
+  const css = read("options.css");
+  // 旧的赭红 rgba(200, 103, 79, ...) 应该已经跟着换色一起改掉
+  assert.doesNotMatch(css, /rgba\(200,\s*103,\s*79/);
+});
