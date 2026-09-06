@@ -10,11 +10,11 @@ const YTD_OPTIONS = (() => {
 
   const COPY = {
     en: {
-      pageTitle: "YouTube Digest Settings",
+      pageTitle: "YouTube Digest AI Settings",
       languageGroupLabel: "Interface language",
       heading: "Bring your own API keys",
       lede:
-        "Keys stay in this Chrome profile and are sent only to Supadata and DeepSeek. This open-source extension has no developer server or analytics.",
+        "Keys stay in this Chrome profile and are sent only to Supadata and the AI provider you choose. This open-source extension has no developer server or analytics.",
       transcriptProvider: "Transcript provider",
       supadataApiKeyLabel: "Supadata API key",
       supadataHelp: "Used to fetch timestamped YouTube subtitles. ",
@@ -23,6 +23,7 @@ const YTD_OPTIONS = (() => {
         ". Supadata generates the key during onboarding.",
       aiProvider: "AI provider",
       providerLabel: "Provider",
+      providerCustom: "Custom (OpenAI-compatible)",
       modelLabel: "Model",
       fetchModels: "Fetch models",
       fetchingModels: "Fetching models…",
@@ -70,11 +71,11 @@ const YTD_OPTIONS = (() => {
         "Could not load saved settings. You can still preview this page.",
     },
     "zh-CN": {
-      pageTitle: "YouTube Digest 设置",
+      pageTitle: "YouTube Digest AI 设置",
       languageGroupLabel: "界面语言",
       heading: "使用你自己的 API 密钥",
       lede:
-        "密钥仅保存在当前 Chrome 个人资料中，只会发送给 Supadata 和 DeepSeek。本开源扩展没有开发者服务器，也不使用分析服务。",
+        "密钥仅保存在当前 Chrome 个人资料中，只会发送给 Supadata 和你选择的 AI 服务商。本开源扩展没有开发者服务器，也不使用分析服务。",
       transcriptProvider: "字幕服务",
       supadataApiKeyLabel: "Supadata API 密钥",
       supadataHelp: "用于获取带时间戳的 YouTube 字幕。",
@@ -82,6 +83,7 @@ const YTD_OPTIONS = (() => {
       supadataHelpSuffix: "。Supadata 会在引导流程中生成密钥。",
       aiProvider: "AI 服务",
       providerLabel: "服务商",
+      providerCustom: "自定义（OpenAI 兼容）",
       modelLabel: "模型",
       fetchModels: "获取模型",
       fetchingModels: "正在获取模型……",
@@ -453,7 +455,11 @@ const YTD_OPTIONS = (() => {
       aiKeyLink.hidden = !state.keyUrl;
       fetchModelsBtn.disabled = !state.canListModels;
       setStatus(modelStatus, state.canListModels ? null : "modelsUnsupported");
-      applyProviderCopy(state.label);
+      applyProviderCopy(
+        state.providerId === "custom"
+          ? translate(currentLanguage, "providerCustom")
+          : state.label,
+      );
     }
 
     /** 文案里的服务商名随选择变化，不再写死 DeepSeek。 */

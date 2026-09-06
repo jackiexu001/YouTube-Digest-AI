@@ -69,7 +69,8 @@ var YTD_PROVIDERS = (() => {
     },
     {
       id: "custom",
-      label: "自定义（OpenAI 兼容）",
+      // 展示文案由界面按语言翻译（providerCustom），这里只作内部标识
+      label: "Custom",
       adapter: "openai",
       baseUrl: "",
       defaultModel: "",

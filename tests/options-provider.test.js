@@ -228,3 +228,38 @@ test("获取模型失败的文案会带上具体原因", () => {
 test("模型输入框和获取按钮的横向排布有对应样式", () => {
   assert.match(read("options.css"), /\.model-row\s*\{/);
 });
+
+test("页面文案不再写死 DeepSeek 是唯一的 AI 服务商", () => {
+  const options = require("../options.js");
+  for (const lang of ["en", "zh-CN"]) {
+    const lede = options.translate(lang, "lede");
+    // 支持七家之后，说「只发送给 Supadata 和 DeepSeek」就是错的
+    assert.doesNotMatch(lede, /DeepSeek/, `${lang} 的开场白仍写死了 DeepSeek`);
+  }
+});
+
+test("设置页标题带上 AI，与扩展名一致", () => {
+  const options = require("../options.js");
+  assert.match(options.translate("en", "pageTitle"), /YouTube Digest AI/);
+  assert.match(options.translate("zh-CN", "pageTitle"), /YouTube Digest AI/);
+});
+
+test("设置页上显示的产品名是 YouTube Digest AI", () => {
+  const html = read("options.html");
+  assert.match(html, /class="eyebrow">YouTube Digest AI</);
+  assert.match(html, /<title>YouTube Digest AI Settings<\/title>/);
+});
+
+test("「自定义」是描述性文字，要跟着界面语言走；品牌名不翻译", () => {
+  const options = require("../options.js");
+  assert.match(options.translate("en", "providerCustom"), /Custom/);
+  assert.match(options.translate("zh-CN", "providerCustom"), /自定义/);
+
+  // 品牌名在两种语言下都是同一个写法
+  const providers = require("../providers.js");
+  const byId = Object.fromEntries(providers.listProviders().map((p) => [p.id, p]));
+  assert.equal(byId.openai.label, "OpenAI");
+  assert.equal(byId.anthropic.label, "Anthropic Claude");
+  // custom 的 label 不承载展示文案，展示交给 providerCustom
+  assert.doesNotMatch(byId.custom.label, /自定义/);
+});

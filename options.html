@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YouTube Digest Settings</title>
+    <title>YouTube Digest AI Settings</title>
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
     <main class="settings-shell">
       <header>
         <div class="settings-heading-row">
-          <div class="eyebrow">YouTube Digest</div>
+          <div class="eyebrow">YouTube Digest AI</div>
           <div
             class="language-switch"
             role="group"
@@ -38,8 +38,8 @@
         <h1 data-i18n="heading">Bring your own API keys</h1>
         <p class="lede" data-i18n="lede">
           Keys stay in this Chrome profile and are sent only to Supadata and
-          DeepSeek. This open-source extension has no developer server or
-          analytics.
+          the AI provider you choose. This open-source extension has no
+          developer server or analytics.
         </p>
       </header>
 
@@ -84,7 +84,7 @@
               <option value="doubao">豆包</option>
               <option value="anthropic">Anthropic Claude</option>
               <option value="gemini">Google Gemini</option>
-              <option value="custom">自定义（OpenAI 兼容）</option>
+              <option value="custom" data-i18n="providerCustom">Custom (OpenAI-compatible)</option>
           </select>
 
           <div id="baseUrlRow" hidden>
