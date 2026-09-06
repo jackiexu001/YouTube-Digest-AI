@@ -26,7 +26,8 @@ test("manifest uses minimized install-time permissions", () => {
   for (const host of manifest.optional_host_permissions || []) {
     assert.match(host, /^https:\/\//, `可选权限必须是 https：${host}`);
   }
-  assert.equal(manifest.version, "1.2.0");
+    // 相对上游的两个大功能：多服务商与 AI 字幕。版本号也借此与上游区分
+  assert.equal(manifest.version, "2.0.0");
 });
 
 test("release copy documents current scope without em dashes", () => {

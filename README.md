@@ -20,13 +20,48 @@ YouTube Digest is a bring-your-own-key project installed locally from GitHub. It
 
 ![YouTube Digest demo](YouTube%20Digest%20demo.png)
 
-## New in v1.2.0
+## What's new in v2.0.0
 
-- Search transcript words or phrases and move through every match.
-- Use one Original, Chinese, or bilingual setting across Transcript, Overview, and Notes. New videos stay in Original by default.
-- Translate visible Overview and Notes content progressively in small cached batches.
-- Explain selected transcript text or save it directly as a timestamped note.
-- Keep your transcript position across navigation, with the panel closing automatically outside YouTube video pages.
+Two changes on top of upstream YouTube Digest:
+
+**1. AI captions: videos with no subtitles now work.** Upstream reads native YouTube captions only and cannot handle a video with captions turned off. This version generates timestamped captions from the audio instead. Timestamps stay clickable, and translation, overviews, and notes all work as usual.
+
+**2. Choose your AI provider.** Upstream is fixed to DeepSeek and switching models requires a code change. This version lets you pick in Settings: DeepSeek, OpenAI, Zhipu GLM, Anthropic Claude, Google Gemini, or any OpenAI-compatible endpoint.
+
+It also fixes an accessibility issue inherited from upstream: white-on-accent button contrast went from 3.81 to 5.18, meeting WCAG AA.
+
+## AI captions
+
+When a video has **no subtitles at all**, the side panel shows the length, the estimated cost, and how much of the hourly free allowance it would use, with a button to start. Nothing runs until you click it.
+
+Measured on a 39-minute video: the first captions appear in about 6 seconds and the whole video finishes in about 25 seconds.
+
+### Three layers, in order
+
+1. **Native YouTube captions** - free and unlimited; almost every video stops here
+2. **Supadata** - a fallback, used only when the first layer fails, so the free credits last
+3. **AI recognition** - offered only when neither of the above has captions, and **only starts when you click**
+
+### Cost and limits
+
+Speech recognition runs on Groq (default) or OpenAI Whisper. Both run Whisper models; the difference is who hosts them.
+
+| Provider | Per hour of audio | Free allowance |
+| --- | --- | --- |
+| Groq | about $0.04 | 7,200 audio seconds per hour, 28,800 per day |
+| OpenAI Whisper | about $0.36 | none |
+
+What the Groq free allowance means in practice ([official docs](https://console.groq.com/docs/rate-limits)):
+
+- **Two hours is the ceiling for a single video**; anything longer spans more than one rate-limit window
+- A 39-minute video: 3 per hour, 12 per day
+- A 1-hour video: 2 per hour, 8 per day
+
+A video over that ceiling is flagged **before** you start, not halfway through. If a run does hit the limit, the finished part is readable immediately and a **Resume** button picks up where it stopped without paying twice.
+
+Generated captions are cached, so reopening the same video costs nothing.
+
+Settings has two switches: **AI captions** (on by default) and **start without asking** (off by default; skips the cost confirmation).
 
 ## Install with your coding agent
 
