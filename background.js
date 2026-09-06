@@ -13,6 +13,7 @@
 
 // Import safe defaults and validation helpers. Secret keys live in
 // chrome.storage.local and are never part of the extension source.
+importScripts("asr/asr-providers.js");
 importScripts("providers.js");
 importScripts("settings.js");
 

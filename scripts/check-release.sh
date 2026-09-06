@@ -27,6 +27,7 @@ fail() {
 public_allowlist=(
   "manifest.json"
   "background.js"
+  "asr/asr-providers.js"
   "providers.js"
   "settings.js"
   "content.js"
@@ -53,6 +54,7 @@ public_allowlist=(
 required_public_files=(
   "manifest.json"
   "background.js"
+  "asr/asr-providers.js"
   "providers.js"
   "settings.js"
   "content.js"

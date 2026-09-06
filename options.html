@@ -146,6 +146,60 @@
           </div>
         </section>
 
+        <section class="card">
+          <h2 data-i18n="aiCaptions">AI captions</h2>
+          <p class="help" data-i18n="aiCaptionsHelp">
+            When a video has no subtitles at all, generate them from the audio.
+            Videos that already have subtitles never reach this step.
+          </p>
+
+          <label class="checkbox-row">
+            <input id="aiCaptionsEnabled" name="aiCaptionsEnabled" type="checkbox" checked />
+            <span data-i18n="aiCaptionsToggle"
+              >Offer AI captions for videos without subtitles</span
+            >
+          </label>
+
+          <div id="asrFields">
+            <label for="asrProvider" data-i18n="asrProviderLabel"
+              >Speech recognition service</label
+            >
+            <select id="asrProvider" name="asrProvider">
+              <option value="groq">Groq</option>
+              <option value="openai">OpenAI Whisper</option>
+            </select>
+
+            <label for="asrModel" data-i18n="asrModelLabel">Model</label>
+            <input
+              id="asrModel"
+              name="asrModel"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            />
+
+            <label for="asrApiKey" id="asrApiKeyLabel" data-i18n-provider="asrApiKeyLabel"
+              >API key</label
+            >
+            <input
+              id="asrApiKey"
+              name="asrApiKey"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <p class="help">
+              <a id="asrKeyLink" href="#" target="_blank" rel="noreferrer"
+                data-i18n-provider="asrKeyLinkLabel"
+                >Create an API key</a
+              ><span data-i18n="deepseekHelpSuffix">.</span>
+            </p>
+            <div class="privacy-note" data-i18n="aiCaptionsNote">
+              This costs money and is never started without your confirmation.
+            </div>
+          </div>
+        </section>
+
         <div class="form-actions">
           <button class="primary" type="submit" data-i18n="saveSettings">
             Save settings
@@ -185,6 +239,7 @@
       </footer>
     </main>
 
+    <script src="asr/asr-providers.js"></script>
     <script src="providers.js"></script>
     <script src="settings.js"></script>
     <script src="options.js"></script>

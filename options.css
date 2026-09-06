@@ -329,3 +329,24 @@ footer {
 #baseUrlRow[hidden] {
   display: none;
 }
+
+/* 复选框与说明文字同排 */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 18px;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  /* 原生复选框默认是系统蓝，和橙色主题不搭 */
+  accent-color: var(--accent);
+}
+
+#asrFields[hidden] {
+  display: none;
+}

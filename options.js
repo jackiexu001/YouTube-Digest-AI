@@ -3,6 +3,10 @@ const YTD_OPTIONS = (() => {
     typeof YTD_PROVIDERS !== "undefined"
       ? YTD_PROVIDERS
       : require("./providers.js");
+  const asrApi =
+    typeof YTD_ASR_PROVIDERS !== "undefined"
+      ? YTD_ASR_PROVIDERS
+      : require("./asr/asr-providers.js");
 
   const LANGUAGE_STORAGE_KEY = "ytd_options_language";
   const PREVIEW_STORAGE_PREFIX = "youtubeDigestPreview:";
@@ -22,6 +26,16 @@ const YTD_OPTIONS = (() => {
       supadataHelpSuffix:
         ". Supadata generates the key during onboarding.",
       aiProvider: "AI provider",
+      aiCaptions: "AI captions",
+      aiCaptionsHelp:
+        "When a video has no subtitles at all, generate them from the audio. Videos that already have subtitles never reach this step.",
+      asrProviderLabel: "Speech recognition service",
+      asrModelLabel: "Model",
+      asrApiKeyLabel: "{provider} API key",
+      asrKeyLinkLabel: "Create a {provider} API key",
+      aiCaptionsToggle: "Offer AI captions for videos without subtitles",
+      aiCaptionsNote:
+        "This costs money and is never started without your confirmation. The side panel shows the length, the estimated cost, and how much of the hourly free allowance it uses before you decide.",
       providerLabel: "Provider",
       providerCustom: "Custom (OpenAI-compatible)",
       modelLabel: "Model",
@@ -82,6 +96,16 @@ const YTD_OPTIONS = (() => {
       supadataLink: "创建 Supadata 账号并获取密钥",
       supadataHelpSuffix: "。Supadata 会在引导流程中生成密钥。",
       aiProvider: "AI 服务",
+      aiCaptions: "AI 字幕",
+      aiCaptionsHelp:
+        "视频完全没有字幕时，从声音里生成字幕。已经有字幕的视频不会走到这一步。",
+      asrProviderLabel: "语音识别服务",
+      asrModelLabel: "模型",
+      asrApiKeyLabel: "{provider} API 密钥",
+      asrKeyLinkLabel: "创建 {provider} API 密钥",
+      aiCaptionsToggle: "为没有字幕的视频提供 AI 字幕",
+      aiCaptionsNote:
+        "这会真实产生费用，而且不经你确认绝不会启动。侧边栏会先告诉你视频时长、预计费用，以及会用掉本小时免费额度的多少。",
       providerLabel: "服务商",
       providerCustom: "自定义（OpenAI 兼容）",
       modelLabel: "模型",
@@ -304,6 +328,27 @@ const YTD_OPTIONS = (() => {
     };
   }
 
+
+  /**
+   * 语音识别那一块的表单状态。
+   *
+   * 与文本模型分开：一个把声音变成文字，一个做概览和翻译，
+   * 用的是不同的服务、不同的密钥，切换互不影响。
+   */
+  function asrFormState({ providerId, apiKeys = {}, savedModel = "" } = {}) {
+    const provider = asrApi.getProvider(providerId);
+    return {
+      providerId: provider.id,
+      label: provider.label,
+      model: String(savedModel || "").trim() || provider.defaultModel,
+      apiKey: String(apiKeys[provider.id] || ""),
+      keyUrl: provider.keyUrl,
+      usdPerAudioHour: provider.usdPerAudioHour,
+      // 免费档限额用于事前提示；没有公布限额的服务商是 null，不编造
+      freeTier: provider.freeTier || null,
+    };
+  }
+
   function providerFormState({
     providerId,
     apiKeys = {},
@@ -414,6 +459,14 @@ const YTD_OPTIONS = (() => {
     const fetchModelsBtn = doc.getElementById("fetchModelsBtn");
     const modelStatus = doc.getElementById("modelStatus");
     const aiKeyLink = doc.getElementById("aiKeyLink");
+    const asrProviderSelect = doc.getElementById("asrProvider");
+    const asrModelInput = doc.getElementById("asrModel");
+    const asrApiKeyInput = doc.getElementById("asrApiKey");
+    const asrKeyLink = doc.getElementById("asrKeyLink");
+    const asrFields = doc.getElementById("asrFields");
+    const aiCaptionsToggle = doc.getElementById("aiCaptionsEnabled");
+    // 识别服务商的密钥同样按服务商分开记，切换不会互相覆盖
+    const asrKeysByProvider = {};
     // 每个服务商的密钥单独记着，切换时不会互相覆盖
     const apiKeysByProvider = {};
     const saveStatus = doc.getElementById("saveStatus");
@@ -461,6 +514,9 @@ const YTD_OPTIONS = (() => {
 
       // 通用循环刷不到带服务商名的文案，语言切换后要再补一次
       if (providerSelect) applyProviderCopy();
+      if (asrProviderSelect) {
+        applyAsrCopy(asrApi.getProvider(asrProviderSelect.value).label);
+      }
       updateLanguageButtonState(languageButtons, currentLanguage);
       for (const element of statusStates.keys()) renderStatus(element);
     }
@@ -535,6 +591,41 @@ const YTD_OPTIONS = (() => {
       else setStatus(modelStatus, "modelsFailed", { reason: result.reason });
     }
 
+
+    function applyAsrProvider(providerId, { savedModel = "" } = {}) {
+      const state = asrFormState({
+        providerId,
+        apiKeys: asrKeysByProvider,
+        savedModel,
+      });
+      asrProviderSelect.value = state.providerId;
+      asrModelInput.value = state.model;
+      asrApiKeyInput.value = state.apiKey;
+      asrKeyLink.href = state.keyUrl || "#";
+      applyAsrCopy(state.label);
+    }
+
+    function applyAsrCopy(label) {
+      for (const [id, key] of [
+        ["asrApiKeyLabel", "asrApiKeyLabel"],
+        ["asrKeyLink", "asrKeyLinkLabel"],
+      ]) {
+        const element = doc.getElementById(id);
+        if (element) {
+          element.textContent = translate(currentLanguage, key, { provider: label });
+        }
+      }
+    }
+
+    function rememberCurrentAsrKey() {
+      asrKeysByProvider[asrProviderSelect.value] = asrApiKeyInput.value.trim();
+    }
+
+    function applyCaptionsToggle() {
+      // 关掉总开关时把相关字段一起收起来，避免让人以为还要填
+      asrFields.hidden = !aiCaptionsToggle.checked;
+    }
+
     async function loadSettings() {
       try {
         const stored = await storage.get(settingsApi.STORAGE_KEY);
@@ -549,6 +640,10 @@ const YTD_OPTIONS = (() => {
           savedModel: settings.aiModel,
           savedBaseUrl: settings.aiBaseUrl,
         });
+        Object.assign(asrKeysByProvider, settings.asrApiKeys || {});
+        aiCaptionsToggle.checked = settings.aiCaptionsEnabled;
+        applyCaptionsToggle();
+        applyAsrProvider(settings.asrProvider, { savedModel: settings.asrModel });
         if (migration.migrated) {
           await storage.set({ [settingsApi.STORAGE_KEY]: settings });
           setStatus(saveStatus, "migrationWarning");
@@ -572,11 +667,16 @@ const YTD_OPTIONS = (() => {
       setStatus(saveStatus, "saving");
 
       rememberCurrentKey();
+      rememberCurrentAsrKey();
       const settings = settingsApi.normalize({
         provider: providerSelect.value,
         aiModel: aiModelInput.value,
         aiBaseUrl: aiBaseUrlInput.value,
         aiApiKeys: apiKeysByProvider,
+        asrProvider: asrProviderSelect.value,
+        asrModel: asrModelInput.value,
+        asrApiKeys: asrKeysByProvider,
+        aiCaptionsEnabled: aiCaptionsToggle.checked,
         supadataApiKey: supadataApiKeyInput.value,
       });
 
@@ -640,6 +740,12 @@ const YTD_OPTIONS = (() => {
     });
     aiApiKeyInput.addEventListener("input", rememberCurrentKey);
     fetchModelsBtn.addEventListener("click", handleFetchModels);
+    asrProviderSelect.addEventListener("change", () => {
+      rememberCurrentAsrKey();
+      applyAsrProvider(asrProviderSelect.value);
+    });
+    asrApiKeyInput.addEventListener("input", rememberCurrentAsrKey);
+    aiCaptionsToggle.addEventListener("change", applyCaptionsToggle);
     doc
       .getElementById("clearCacheBtn")
       .addEventListener("click", clearCachedDigests);
@@ -665,6 +771,7 @@ const YTD_OPTIONS = (() => {
     LANGUAGE_STORAGE_KEY,
     createStorageAdapter,
     providerFormState,
+    asrFormState,
     providerDisplayLabel,
     providerCopy,
     fetchModelList,
