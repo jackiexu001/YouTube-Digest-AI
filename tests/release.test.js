@@ -247,6 +247,7 @@ test("runtime has no source-file credential dependency or retired model", () => 
     "sidepanel.js",
     "options.js",
     "settings.js",
+    "providers.js",
   ]
     .map(read)
     .join("\n");
