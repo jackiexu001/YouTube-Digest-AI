@@ -16,7 +16,16 @@ test("manifest uses minimized install-time permissions", () => {
   assert.equal(manifest.options_ui.page, "options.html");
   assert.ok(!manifest.permissions.includes("activeTab"));
   assert.ok(manifest.host_permissions.includes("https://api.deepseek.com/*"));
-  assert.equal(Object.hasOwn(manifest, "optional_host_permissions"), false);
+  // 安装时授予的权限必须是具体域名，不得出现通配
+  for (const host of manifest.host_permissions) {
+    assert.doesNotMatch(host, /^https:\/\/\*/, `安装时权限不得使用通配域名：${host}`);
+  }
+  // 自定义服务商的地址事先未知，只能走可选权限在运行时逐个申请。
+  // 上游不支持自定义服务商，所以原本禁止这一项；我们支持，因此改为
+  // 约束它必须是 https，且安装时不授予任何东西。
+  for (const host of manifest.optional_host_permissions || []) {
+    assert.match(host, /^https:\/\//, `可选权限必须是 https：${host}`);
+  }
   assert.equal(manifest.version, "1.2.0");
 });
 
@@ -126,9 +135,13 @@ test("release copy documents current scope without em dashes", () => {
   const optionsStyles = read("options.css");
   const optionsScript = read("options.js");
   assert.match(optionsPage, /dash\.supadata\.ai\/auth\/sign-up/i);
-  assert.match(optionsPage, /platform\.deepseek\.com\/api_keys/i);
-  assert.doesNotMatch(optionsPage, /<select\b/i);
-  assert.doesNotMatch(optionsPage, /id="(?:provider|aiBaseUrl|aiModel)"/);
+  // 获取密钥的链接现在随选中的服务商变化，不再写死在页面里；
+  // 各家的链接由 providers.js 提供，并在 providers.test.js 里断言。
+  assert.doesNotMatch(optionsPage, /platform\.deepseek\.com\/api_keys/i);
+  // 与上游相反的产品方向：上游刻意只支持一家，我们提供选择器
+  assert.match(optionsPage, /<select[^>]+id="provider"/);
+  assert.match(optionsPage, /id="aiBaseUrl"/);
+  assert.match(optionsPage, /id="aiModel"/);
   assert.match(optionsStyles, /\.data-card\s*\{[^}]*margin-top:\s*36px;/);
   assert.match(optionsScript, /migration\.migrated[\s\S]*storage\.set/);
 

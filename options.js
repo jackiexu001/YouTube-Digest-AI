@@ -1,4 +1,9 @@
 const YTD_OPTIONS = (() => {
+  const providersApi =
+    typeof YTD_PROVIDERS !== "undefined"
+      ? YTD_PROVIDERS
+      : require("./providers.js");
+
   const LANGUAGE_STORAGE_KEY = "ytd_options_language";
   const PREVIEW_STORAGE_PREFIX = "youtubeDigestPreview:";
   const SUPPORTED_LANGUAGES = new Set(["en", "zh-CN"]);
@@ -17,15 +22,28 @@ const YTD_OPTIONS = (() => {
       supadataHelpSuffix:
         ". Supadata generates the key during onboarding.",
       aiProvider: "AI provider",
-      providerSummaryLabel: "Supported AI provider",
-      providerBadge: "Supported in this version",
-      deepseekApiKeyLabel: "DeepSeek API key",
-      deepseekHelp:
-        "YouTube Digest uses DeepSeek V4 Flash for overviews, explanations, translation, and note polishing. ",
-      deepseekLink: "Create a DeepSeek API key",
+      providerLabel: "Provider",
+      modelLabel: "Model",
+      fetchModels: "Fetch models",
+      fetchingModels: "Fetching models…",
+      modelsFetched: "Pick a model from the list, or keep typing your own.",
+      modelsUnsupported:
+        "This provider has no model list API. Type the model name yourself.",
+      modelsNeedKey: "Enter the API key first, then fetch models.",
+      modelsFailed: "Could not fetch models: {reason}. Type the model name yourself.",
+      baseUrlLabel: "API endpoint",
+      baseUrlHelp:
+        "Any OpenAI-compatible endpoint. Chrome will ask for permission to reach this address when you save.",
+      baseUrlRequired: "Enter the API endpoint for your custom provider.",
+      permissionDenied:
+        "Chrome permission for that endpoint was declined, so the settings were not saved.",
+      aiApiKeyLabel: "{provider} API key",
+      aiHelp:
+        "YouTube Digest AI uses {provider} for overviews, explanations, translation, and note polishing.",
+      aiKeyLinkLabel: "Create a {provider} API key",
       deepseekHelpSuffix: ".",
       privacyNote:
-        "When you use AI features, DeepSeek receives the video transcript and relevant video context. Review DeepSeek's terms and pricing before saving.",
+        "When you use AI features, {provider} receives the video transcript and relevant video context. Review that provider's terms and pricing before saving.",
       saveSettings: "Save settings",
       localData: "Local data",
       localDataHelp:
@@ -63,15 +81,26 @@ const YTD_OPTIONS = (() => {
       supadataLink: "创建 Supadata 账号并获取密钥",
       supadataHelpSuffix: "。Supadata 会在引导流程中生成密钥。",
       aiProvider: "AI 服务",
-      providerSummaryLabel: "支持的 AI 服务",
-      providerBadge: "当前版本支持",
-      deepseekApiKeyLabel: "DeepSeek API 密钥",
-      deepseekHelp:
-        "YouTube Digest 使用 DeepSeek V4 Flash 生成概览、解释内容、翻译字幕和润色笔记。",
-      deepseekLink: "创建 DeepSeek API 密钥",
+      providerLabel: "服务商",
+      modelLabel: "模型",
+      fetchModels: "获取模型",
+      fetchingModels: "正在获取模型……",
+      modelsFetched: "可以从列表里挑一个，也可以继续自己填。",
+      modelsUnsupported: "这家没有提供模型列表接口，请自己填写模型名。",
+      modelsNeedKey: "请先填写 API 密钥，再获取模型。",
+      modelsFailed: "获取模型失败：{reason}。请自己填写模型名。",
+      baseUrlLabel: "接口地址",
+      baseUrlHelp:
+        "任何兼容 OpenAI 格式的接口地址。保存时 Chrome 会询问是否允许访问这个地址。",
+      baseUrlRequired: "请填写自定义服务商的接口地址。",
+      permissionDenied: "你拒绝了访问该地址的授权，设置没有保存。",
+      aiApiKeyLabel: "{provider} API 密钥",
+      aiHelp:
+        "YouTube Digest AI 使用 {provider} 生成概览、解释内容、翻译字幕和润色笔记。",
+      aiKeyLinkLabel: "创建 {provider} API 密钥",
       deepseekHelpSuffix: "。",
       privacyNote:
-        "使用 AI 功能时，DeepSeek 会收到视频字幕及相关视频上下文。保存前请查看 DeepSeek 的服务条款和价格。",
+        "使用 AI 功能时，{provider} 会收到视频字幕及相关视频上下文。保存前请查看该服务商的服务条款和价格。",
       saveSettings: "保存设置",
       localData: "本地数据",
       localDataHelp:
@@ -104,7 +133,11 @@ const YTD_OPTIONS = (() => {
   function translate(language, key, params = {}) {
     const normalizedLanguage = normalizeLanguage(language);
     const value = COPY[normalizedLanguage][key] ?? COPY.en[key] ?? "";
-    return typeof value === "function" ? value(params) : value;
+    if (typeof value === "function") return value(params);
+    // 文案里用 {name} 标出可替换的部分，例如服务商名和错误原因
+    return String(value).replace(/\{(\w+)\}/g, (match, name) =>
+      Object.hasOwn(params, name) ? String(params[name]) : match,
+    );
   }
 
   function createStorageAdapter(chromeApi, fallbackStorage) {
@@ -238,6 +271,102 @@ const YTD_OPTIONS = (() => {
     }
   }
 
+
+  /**
+   * 根据选中的服务商算出整个表单该显示什么。
+   *
+   * 做成纯函数是为了能直接测：切换服务商牵扯模型名、地址、密钥、
+   * 帮助链接和按钮可用性五处联动，散在 DOM 操作里就没法验证了。
+   */
+  function providerFormState({
+    providerId,
+    apiKeys = {},
+    savedModel = "",
+    savedBaseUrl = "",
+  } = {}) {
+    const provider = providersApi.getProvider(providerId);
+    const isCustom = provider.id === "custom";
+    return {
+      providerId: provider.id,
+      label: provider.label,
+      model: String(savedModel || "").trim() || provider.defaultModel,
+      // 内置服务商的地址写死在代码里，不接受页面传入的值，
+      // 否则存储被改动后请求和密钥会被发到别处
+      baseUrl: isCustom ? String(savedBaseUrl || "").trim() : provider.baseUrl,
+      baseUrlEditable: isCustom,
+      keyUrl: provider.keyUrl,
+      apiKey: String(apiKeys[provider.id] || ""),
+      canListModels: providersApi.listModelsRequest({
+        providerId: provider.id,
+        baseUrl: provider.baseUrl || "https://placeholder.invalid",
+        apiKey: "placeholder",
+      }) !== null,
+    };
+  }
+
+  /**
+   * 向服务商查询可用模型。
+   *
+   * 各家接口随时可能改或下线，所以任何失败都返回可读原因而不是抛错——
+   * 界面要能退回手填模型名，不能因为列表拿不到就用不了这个服务商。
+   */
+  async function fetchModelList({
+    providerId,
+    baseUrl,
+    apiKey,
+    fetchImpl = typeof fetch !== "undefined" ? fetch : null,
+  }) {
+    if (!apiKey) return { ok: false, reason: "needsKey" };
+
+    const request = providersApi.listModelsRequest({ providerId, baseUrl, apiKey });
+    if (!request) return { ok: false, unsupported: true, reason: "unsupported" };
+
+    try {
+      const response = await fetchImpl(request.url, { headers: request.headers });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        return {
+          ok: false,
+          reason: providersApi.extractError(providerId, data, response.status),
+        };
+      }
+      const models = providersApi.extractModels(providerId, data);
+      if (!models.length) return { ok: false, reason: "empty" };
+      return { ok: true, models };
+    } catch (error) {
+      return { ok: false, reason: String((error && error.message) || error) };
+    }
+  }
+
+
+  /**
+   * 自定义服务商的地址事先不知道，无法写进 manifest，
+   * 只能在保存时向 Chrome 申请。内置服务商的地址已声明，直接放行。
+   */
+  async function ensureEndpointPermission({ providerId, baseUrl, permissionsApi }) {
+    if (providerId !== "custom") return { granted: true };
+
+    const trimmed = String(baseUrl || "").trim();
+    if (!trimmed) return { granted: false, reason: "baseUrlRequired" };
+
+    let origin;
+    try {
+      const parsed = new URL(trimmed);
+      // 密钥会随请求发出，明文 http 会在链路上暴露
+      if (parsed.protocol !== "https:") {
+        return { granted: false, reason: "baseUrlRequired" };
+      }
+      origin = `${parsed.protocol}//${parsed.hostname}/*`;
+    } catch (_error) {
+      return { granted: false, reason: "baseUrlRequired" };
+    }
+
+    const request = { origins: [origin] };
+    if (await permissionsApi.contains(request)) return { granted: true };
+    const granted = await permissionsApi.request(request);
+    return granted ? { granted: true } : { granted: false, reason: "permissionDenied" };
+  }
+
   function initialize(root = globalThis) {
     const doc = root.document;
     const settingsApi = root.YTD_SETTINGS;
@@ -250,6 +379,15 @@ const YTD_OPTIONS = (() => {
     const form = doc.getElementById("settingsForm");
     const aiApiKeyInput = doc.getElementById("aiApiKey");
     const supadataApiKeyInput = doc.getElementById("supadataApiKey");
+    const providerSelect = doc.getElementById("provider");
+    const aiModelInput = doc.getElementById("aiModel");
+    const aiBaseUrlInput = doc.getElementById("aiBaseUrl");
+    const baseUrlRow = doc.getElementById("baseUrlRow");
+    const fetchModelsBtn = doc.getElementById("fetchModelsBtn");
+    const modelStatus = doc.getElementById("modelStatus");
+    const aiKeyLink = doc.getElementById("aiKeyLink");
+    // 每个服务商的密钥单独记着，切换时不会互相覆盖
+    const apiKeysByProvider = {};
     const saveStatus = doc.getElementById("saveStatus");
     const dataStatus = doc.getElementById("dataStatus");
     const languageButtons = [...doc.querySelectorAll("[data-language]")];
@@ -264,7 +402,8 @@ const YTD_OPTIONS = (() => {
     }
 
     function setStatus(element, key, params = {}) {
-      statusStates.set(element, { key, params });
+      if (key) statusStates.set(element, { key, params });
+      else statusStates.delete(element);
       renderStatus(element);
     }
 
@@ -296,6 +435,79 @@ const YTD_OPTIONS = (() => {
       for (const element of statusStates.keys()) renderStatus(element);
     }
 
+
+    /** 把选中服务商的默认值铺进表单。切换服务商时先把当前输入存回去。 */
+    function applyProvider(providerId, { savedModel = "", savedBaseUrl = "" } = {}) {
+      const state = providerFormState({
+        providerId,
+        apiKeys: apiKeysByProvider,
+        savedModel,
+        savedBaseUrl,
+      });
+      providerSelect.value = state.providerId;
+      aiModelInput.value = state.model;
+      aiBaseUrlInput.value = state.baseUrl;
+      aiApiKeyInput.value = state.apiKey;
+      baseUrlRow.hidden = !state.baseUrlEditable;
+      aiKeyLink.href = state.keyUrl || "#";
+      aiKeyLink.hidden = !state.keyUrl;
+      fetchModelsBtn.disabled = !state.canListModels;
+      setStatus(modelStatus, state.canListModels ? null : "modelsUnsupported");
+      applyProviderCopy(state.label);
+    }
+
+    /** 文案里的服务商名随选择变化，不再写死 DeepSeek。 */
+    function applyProviderCopy(label) {
+      for (const [id, key] of [
+        ["aiApiKeyLabel", "aiApiKeyLabel"],
+        ["aiHelpText", "aiHelp"],
+        ["aiKeyLink", "aiKeyLinkLabel"],
+        ["privacyNote", "privacyNote"],
+      ]) {
+        const element = doc.getElementById(id);
+        if (element) {
+          element.textContent = translate(currentLanguage, key, { provider: label });
+        }
+      }
+    }
+
+    function rememberCurrentKey() {
+      apiKeysByProvider[providerSelect.value] = aiApiKeyInput.value.trim();
+    }
+
+    async function handleFetchModels() {
+      rememberCurrentKey();
+      setStatus(modelStatus, "fetchingModels");
+      const result = await fetchModelList({
+        providerId: providerSelect.value,
+        baseUrl: aiBaseUrlInput.value || undefined,
+        apiKey: aiApiKeyInput.value.trim(),
+      });
+
+      if (result.ok) {
+        // 列表只作提示，输入框仍可手填 —— 新模型刚发布时列表往往还没有
+        let list = doc.getElementById("modelOptions");
+        if (!list) {
+          list = doc.createElement("datalist");
+          list.id = "modelOptions";
+          aiModelInput.parentNode.appendChild(list);
+          aiModelInput.setAttribute("list", "modelOptions");
+        }
+        list.innerHTML = "";
+        for (const model of result.models) {
+          const option = doc.createElement("option");
+          option.value = model;
+          list.appendChild(option);
+        }
+        setStatus(modelStatus, "modelsFetched");
+        return;
+      }
+
+      if (result.unsupported) setStatus(modelStatus, "modelsUnsupported");
+      else if (result.reason === "needsKey") setStatus(modelStatus, "modelsNeedKey");
+      else setStatus(modelStatus, "modelsFailed", { reason: result.reason });
+    }
+
     async function loadSettings() {
       try {
         const stored = await storage.get(settingsApi.STORAGE_KEY);
@@ -304,8 +516,12 @@ const YTD_OPTIONS = (() => {
         );
         const settings = migration.settings;
 
-        aiApiKeyInput.value = settings.aiApiKey;
+        Object.assign(apiKeysByProvider, settings.aiApiKeys || {});
         supadataApiKeyInput.value = settings.supadataApiKey;
+        applyProvider(settings.provider, {
+          savedModel: settings.aiModel,
+          savedBaseUrl: settings.aiBaseUrl,
+        });
         if (migration.migrated) {
           await storage.set({ [settingsApi.STORAGE_KEY]: settings });
           setStatus(saveStatus, "migrationWarning");
@@ -328,8 +544,12 @@ const YTD_OPTIONS = (() => {
       event.preventDefault();
       setStatus(saveStatus, "saving");
 
+      rememberCurrentKey();
       const settings = settingsApi.normalize({
-        aiApiKey: aiApiKeyInput.value,
+        provider: providerSelect.value,
+        aiModel: aiModelInput.value,
+        aiBaseUrl: aiBaseUrlInput.value,
+        aiApiKeys: apiKeysByProvider,
         supadataApiKey: supadataApiKeyInput.value,
       });
 
@@ -337,8 +557,20 @@ const YTD_OPTIONS = (() => {
         setStatus(saveStatus, "addSupadataKey");
         return;
       }
-      if (!settings.aiApiKey) {
+      if (!settingsApi.activeApiKey(settings)) {
         setStatus(saveStatus, "addDeepseekKey");
+        return;
+      }
+
+      // 自定义服务商的地址不在 manifest 里，保存前要先拿到访问授权，
+      // 否则会存下一个必定失败的配置
+      const permission = await ensureEndpointPermission({
+        providerId: settings.provider,
+        baseUrl: settings.aiBaseUrl,
+        permissionsApi: root.chrome?.permissions,
+      });
+      if (!permission.granted) {
+        setStatus(saveStatus, permission.reason || "permissionDenied");
         return;
       }
 
@@ -375,6 +607,12 @@ const YTD_OPTIONS = (() => {
     }
 
     form.addEventListener("submit", saveSettings);
+    providerSelect.addEventListener("change", () => {
+      rememberCurrentKey();
+      applyProvider(providerSelect.value);
+    });
+    aiApiKeyInput.addEventListener("input", rememberCurrentKey);
+    fetchModelsBtn.addEventListener("click", handleFetchModels);
     doc
       .getElementById("clearCacheBtn")
       .addEventListener("click", clearCachedDigests);
@@ -399,6 +637,9 @@ const YTD_OPTIONS = (() => {
     COPY,
     LANGUAGE_STORAGE_KEY,
     createStorageAdapter,
+    providerFormState,
+    fetchModelList,
+    ensureEndpointPermission,
     normalizeLanguage,
     persistPreferredLanguage,
     readPreferredLanguage,

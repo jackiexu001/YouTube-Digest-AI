@@ -290,3 +290,24 @@ footer {
   }
 
 }
+
+/* 模型名输入框与「获取模型」按钮同排 */
+.model-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.model-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#baseUrlRow[hidden] {
+  display: none;
+}

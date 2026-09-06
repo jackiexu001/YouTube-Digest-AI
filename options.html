@@ -75,19 +75,53 @@
 
         <section class="card">
           <h2 data-i18n="aiProvider">AI provider</h2>
-          <div
-            class="provider-summary"
-            aria-label="Supported AI provider"
-            data-i18n-aria-label="providerSummaryLabel"
-          >
-            <span class="provider-name">DeepSeek V4 Flash</span>
-            <span class="provider-badge" data-i18n="providerBadge"
-              >Supported in this version</span
-            >
+
+          <label for="provider" data-i18n="providerLabel">Provider</label>
+          <select id="provider" name="provider">
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+              <option value="glm">智谱 GLM</option>
+              <option value="doubao">豆包</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="custom">自定义（OpenAI 兼容）</option>
+          </select>
+
+          <div id="baseUrlRow" hidden>
+            <label for="aiBaseUrl" data-i18n="baseUrlLabel">API endpoint</label>
+            <input
+              id="aiBaseUrl"
+              name="aiBaseUrl"
+              type="url"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://your-endpoint.example.com/v1"
+            />
+            <p class="help" data-i18n="baseUrlHelp">
+              Any OpenAI-compatible endpoint. Chrome will ask for permission to
+              reach this address when you save.
+            </p>
           </div>
 
-          <label for="aiApiKey" data-i18n="deepseekApiKeyLabel"
-            >DeepSeek API key</label
+          <label for="aiModel" data-i18n="modelLabel">Model</label>
+          <div class="model-row">
+            <input
+              id="aiModel"
+              name="aiModel"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="fetchModelsBtn" type="button" data-i18n="fetchModels">
+              Fetch models
+            </button>
+          </div>
+          <p class="help">
+            <span id="modelStatus" role="status" aria-live="polite"></span>
+          </p>
+
+          <label for="aiApiKey" id="aiApiKeyLabel" data-i18n="aiApiKeyLabel"
+            >API key</label
           >
           <input
             id="aiApiKey"
@@ -95,25 +129,21 @@
             type="password"
             autocomplete="off"
             spellcheck="false"
-            placeholder="Paste your DeepSeek key"
           />
           <p class="help">
-            <span data-i18n="deepseekHelp"
-              >YouTube Digest uses DeepSeek V4 Flash for overviews,
-              explanations, translation, and note polishing.</span
+            <span id="aiHelpText" data-i18n="aiHelp"
+              >Used for overviews, explanations, translation, and note
+              polishing.</span
             >
-            <a
-              href="https://platform.deepseek.com/api_keys"
-              target="_blank"
-              rel="noreferrer"
-              data-i18n="deepseekLink"
-              >Create a DeepSeek API key</a
+            <a id="aiKeyLink" href="#" target="_blank" rel="noreferrer"
+              data-i18n="aiKeyLinkLabel"
+              >Create an API key</a
             ><span data-i18n="deepseekHelpSuffix">.</span>
           </p>
-          <div class="privacy-note" data-i18n="privacyNote">
-            When you use AI features, DeepSeek receives the video transcript
-            and relevant video context. Review DeepSeek's terms and pricing
-            before saving.
+          <div class="privacy-note" id="privacyNote" data-i18n="privacyNote">
+            When you use AI features, the selected provider receives the video
+            transcript and relevant video context. Review that provider's terms
+            and pricing before saving.
           </div>
         </section>
 
