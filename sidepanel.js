@@ -664,12 +664,19 @@ async function startDigest(videoId, videoUrl) {
   showState("loading");
   updateLoading("Fetching transcript", "");
 
+  const activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
   const transcriptResult = await chrome.runtime.sendMessage({
     action: "fetchTranscript",
     videoId: videoId,
+    tabId: activeTab?.id,
   });
 
   if (!transcriptResult.success) {
+    // 没有任何现成字幕，但可以用 AI 生成
+    if (transcriptResult.error === "NO_NATIVE_CAPTIONS" && transcriptResult.aiCaptions) {
+      showAiCaptionPrompt(videoId, transcriptResult.aiCaptions);
+      return;
+    }
     if (transcriptResult.error === "NO_SUPADATA_KEY") {
       showError(
         "API key missing",
@@ -1378,6 +1385,105 @@ function exportTranscript() {
 // UI STATE MANAGEMENT
 // ============================================================
 
+
+// ============================================================
+// AI 字幕
+// ============================================================
+
+let aiCaptionVideoId = null;
+
+/** 显示费用与额度预估，等用户决定。绝不自动开始。 */
+function showAiCaptionPrompt(videoId, info) {
+  aiCaptionVideoId = videoId;
+  const prompt = YTD_CAPTION_PROMPT.buildPrompt({
+    durationSeconds: info.durationSeconds,
+    estimatedUsd: info.estimatedUsd,
+    provider: info.provider,
+    freeTier: info.freeTier,
+    hasKey: info.available,
+  });
+
+  showState("aiCaptions");
+  document.getElementById("aiCaptionSummary").textContent = prompt.summary;
+  const warningEl = document.getElementById("aiCaptionWarning");
+  warningEl.textContent = prompt.warning;
+  warningEl.style.display = prompt.warning ? "block" : "none";
+
+  const button = document.getElementById("aiCaptionBtn");
+  button.textContent = prompt.actionLabel;
+  button.disabled = false;
+  document.getElementById("aiCaptionStatus").textContent = "";
+  button.onclick = prompt.canStart
+    ? () => startAiCaptions(videoId)
+    : () => chrome.runtime.sendMessage({ action: "openOptions" });
+}
+
+async function startAiCaptions(videoId) {
+  const button = document.getElementById("aiCaptionBtn");
+  const status = document.getElementById("aiCaptionStatus");
+  button.disabled = true;
+  button.textContent = "正在生成…";
+  status.textContent = "正在读取音频…";
+
+  const activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  const result = await chrome.runtime.sendMessage({
+    action: "generateAiCaptions",
+    videoId,
+    tabId: activeTab?.id,
+  });
+
+  if (result?.rateLimited) {
+    const state = YTD_CAPTION_PROMPT.buildRateLimited({
+      completed: result.completed,
+      total: result.total,
+      chunkSeconds: 300,
+      retryAfterSeconds: result.retryAfterSeconds,
+    });
+    status.textContent = state.message;
+    button.disabled = false;
+    button.textContent = "继续";
+    // 已完成的部分先给用户读，不要因为后面撞限流就什么都不显示
+    if (result.transcript?.length) applyTranscript(result);
+    return;
+  }
+
+  if (!result?.success) {
+    status.textContent = result?.message || result?.error || "生成失败，请重试。";
+    button.disabled = false;
+    button.textContent = "重试";
+    return;
+  }
+
+  applyTranscript(result);
+}
+
+/** 把生成好的字幕交给现有的展示流程，下游功能感知不到来源差异。 */
+function applyTranscript(result) {
+  currentTranscript = result.transcript;
+  currentTranscriptText = result.transcriptText;
+  currentTranscriptTimestamped = result.transcriptTextTimestamped;
+  currentTranscriptLanguage = result.language || null;
+  renderTranscript();
+  showState("results");
+  document.getElementById("tabsNav").style.display = "flex";
+  loadNotes(currentVideoId);
+  setupExplainFeature();
+}
+
+// 每完成一段就更新进度，让用户看到它在动
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.action !== "aiCaptionProgress") return;
+  if (message.videoId !== aiCaptionVideoId) return;
+  const status = document.getElementById("aiCaptionStatus");
+  if (status) {
+    status.textContent = YTD_CAPTION_PROMPT.buildProgress({
+      completed: message.completed,
+      total: message.total,
+      chunkSeconds: 300,
+    });
+  }
+});
+
 function showState(state) {
   document.getElementById("welcomeState").style.display =
     state === "welcome" ? "flex" : "none";
@@ -1389,6 +1495,8 @@ function showState(state) {
   if (uploadEl) uploadEl.style.display = "none"; // Upload state removed — always hidden
   document.getElementById("resultsState").style.display =
     state === "results" ? "block" : "none";
+  const aiCaptionEl = document.getElementById("aiCaptionPrompt");
+  if (aiCaptionEl) aiCaptionEl.style.display = state === "aiCaptions" ? "block" : "none";
 
   // The tab bar only belongs on the results view. We toggle it HERE, in one
   // place, so it tracks the view automatically. Previously each caller had to

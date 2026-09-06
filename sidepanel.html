@@ -104,6 +104,17 @@
         </div>
       </div>
 
+      <!-- AI CAPTIONS -->
+      <div id="aiCaptionPrompt" style="display: none">
+        <div class="error-container">
+          <div class="error-title">这个视频没有字幕</div>
+          <div class="error-message" id="aiCaptionSummary"></div>
+          <div class="error-message" id="aiCaptionWarning" style="display: none"></div>
+          <button class="error-btn" id="aiCaptionBtn">生成 AI 字幕</button>
+          <div class="error-message" id="aiCaptionStatus" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+
       <!-- RESULTS -->
       <div id="resultsState" style="display: none">
         <!-- TAB: Transcript (default - no LLM required) -->
@@ -263,6 +274,7 @@
     </button>
 
     <script src="asr/asr-providers.js"></script>
+    <script src="asr/caption-prompt.js"></script>
     <script src="providers.js"></script>
     <script src="settings.js"></script>
     <script src="sidepanel.js"></script>

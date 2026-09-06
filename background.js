@@ -14,6 +14,13 @@
 // Import safe defaults and validation helpers. Secret keys live in
 // chrome.storage.local and are never part of the extension source.
 importScripts("asr/asr-providers.js");
+importScripts("asr/youtube-source.js");
+importScripts("asr/transcript-source.js");
+importScripts("asr/mp4-index.js");
+importScripts("asr/fetcher.js");
+importScripts("asr/wav.js");
+importScripts("asr/merge.js");
+importScripts("asr/transcribe.js");
 importScripts("providers.js");
 importScripts("settings.js");
 
@@ -346,10 +353,20 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // We need to return true to indicate we'll respond asynchronously
   if (message.action === "fetchTranscript") {
-    handleFetchTranscript(message.videoId)
+    handleFetchTranscript(message.videoId, message.tabId)
       .then(sendResponse)
       .catch((err) => sendResponse({ error: err.message }));
     return true; // Keep the message channel open for async response
+  }
+
+  if (message.action === "generateAiCaptions") {
+    handleGenerateAiCaptions(message.videoId, message.tabId, (progress) => {
+      chrome.runtime.sendMessage({ action: "aiCaptionProgress", videoId: message.videoId, ...progress })
+        .catch(() => {});
+    })
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 
   if (message.action === "analyzeTranscript") {
@@ -635,7 +652,413 @@ async function getPlayerVideoDetails(tabId) {
  * @param {string} videoId - The YouTube video ID (e.g., "dQw4w9WgXcQ")
  * @returns {Object} - { success, transcript, transcriptText, language } or { success: false, error }
  */
-async function handleFetchTranscript(videoId) {
+
+// ============================================================
+// AI 字幕：取音频、识别、缓存
+// ============================================================
+
+const AI_CAPTION_CACHE_PREFIX = "ytd_ai_transcript_";
+const AI_CHUNK_SECONDS = 300;
+
+/**
+ * 在页面自己的环境里向 YouTube 官方接口取播放器信息。
+ *
+ * 必须走 MAIN world：扩展自己发请求会带上 Origin: chrome-extension://...，
+ * YouTube 返回 403，而浏览器不允许扩展伪造 Origin。
+ */
+async function fetchYouTubePlayer(tabId, videoId) {
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [videoId, YTD_YOUTUBE_SOURCE.CLIENTS],
+      func: async (vid, clients) => {
+        const cfg = window.ytcfg;
+        let visitorData =
+          cfg?.get?.("INNERTUBE_CONTEXT")?.client?.visitorData ||
+          cfg?.data_?.INNERTUBE_CONTEXT?.client?.visitorData || null;
+        if (!visitorData) {
+          const m = document.documentElement.innerHTML.match(/"visitorData":"([^"]+)"/);
+          if (m) { try { visitorData = JSON.parse('"' + m[1] + '"'); } catch (e) { visitorData = m[1]; } }
+        }
+        if (!visitorData) return { ok: false, error: "no-visitor-data" };
+
+        for (const spec of clients) {
+          try {
+            const res = await fetch("/youtubei/v1/player", {
+              method: "POST",
+              credentials: "omit",
+              headers: {
+                "Content-Type": "application/json",
+                "X-YouTube-Client-Name": spec.number,
+                "X-YouTube-Client-Version": spec.version,
+                "X-Goog-Visitor-Id": visitorData,
+              },
+              body: JSON.stringify({
+                context: {
+                  client: {
+                    clientName: spec.name, clientVersion: spec.version,
+                    hl: "en", gl: "US", visitorData, ...spec.extra,
+                  },
+                },
+                videoId: vid, contentCheckOk: true, racyCheckOk: true,
+              }),
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data?.streamingData?.adaptiveFormats?.length) return { ok: true, data };
+          } catch (e) {
+            // 换下一个客户端身份再试
+          }
+        }
+        return { ok: false, error: "no-usable-client" };
+      },
+    });
+
+    if (!result?.ok) return { ok: false, error: result?.error || "unknown" };
+    const info = YTD_YOUTUBE_SOURCE.readVideoInfo(result.data);
+    return {
+      ok: true,
+      captionTracks: info.captionTracks,
+      durationSeconds: info.durationSeconds,
+      title: info.title,
+      audioFormat: YTD_YOUTUBE_SOURCE.pickAudioFormat(result.data),
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+/** 在页面环境里下载原生字幕。同样是 Origin 的原因。 */
+async function fetchNativeCaptionTrack(tabId, track) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [YTD_YOUTUBE_SOURCE.captionUrl(track.baseUrl)],
+    func: async (url) => {
+      const res = await fetch(url, { credentials: "omit" });
+      if (!res.ok) return null;
+      return await res.json();
+    },
+  });
+  return YTD_YOUTUBE_SOURCE.parseCaptionJson(result);
+}
+
+/** 把统一的分段格式转成下游功能认识的形状。 */
+function toTranscriptShape(segments) {
+  const transcript = [];
+  let plain = "";
+  let timestamped = "";
+  for (const segment of segments) {
+    const start = Math.floor(segment.start);
+    const minutes = Math.floor(start / 60);
+    const seconds = start % 60;
+    transcript.push({
+      text: segment.text,
+      start,
+      duration: Math.max(0, Math.round((segment.end || 0) - segment.start)),
+      language: null,
+    });
+    plain += segment.text + " ";
+    timestamped += `[${minutes}:${String(seconds).padStart(2, "0")}] ${segment.text}\n`;
+  }
+  return {
+    transcript,
+    transcriptText: plain.trim(),
+    transcriptTextTimestamped: timestamped.trim(),
+  };
+}
+
+async function readAiCaptionCache(videoId) {
+  const key = AI_CAPTION_CACHE_PREFIX + videoId;
+  const stored = await chrome.storage.local.get(key);
+  return stored[key] || null;
+}
+
+async function writeAiCaptionCache(videoId, value) {
+  await chrome.storage.local.set({ [AI_CAPTION_CACHE_PREFIX + videoId]: value });
+}
+
+
+/**
+ * 字幕获取的入口。下游的翻译、概览、笔记、搜索都只认它的返回格式，
+ * 所以无论字幕来自哪一层，返回的形状都必须一致。
+ */
+
+/**
+ * 生成 AI 字幕。
+ *
+ * 流程：取音频地址 → 读 sidx 索引 → 按 5 分钟切块 →
+ * 每块并行下载、解码成 WAV、送识别 → 边跑边保存断点和结果。
+ *
+ * 音频下载和解码都在页面环境里做：下载是因为 googlevideo 只给
+ * youtube.com 来源放行 CORS，解码是因为 service worker 里没有 AudioContext。
+ */
+async function handleGenerateAiCaptions(videoId, tabId, onProgress) {
+  const settings = await getSettings();
+  const apiKey = YTD_SETTINGS.activeAsrApiKey(settings);
+  const provider = YTD_ASR_PROVIDERS.getProvider(settings.asrProvider);
+  if (!apiKey) {
+    return { success: false, error: "NO_ASR_KEY", message: `${provider.label} API key not configured.` };
+  }
+
+  const player = await fetchYouTubePlayer(tabId, videoId);
+  if (!player.ok || !player.audioFormat) {
+    return { success: false, error: "NO_AUDIO", message: "Could not read this video's audio stream." };
+  }
+  if (player.audioFormat.container !== "mp4") {
+    // webm 的切片需要另写 EBML 解析，目前只支持 mp4
+    return { success: false, error: "UNSUPPORTED_AUDIO", message: "This video's audio format is not supported yet." };
+  }
+
+  const audioUrl = stripPlayerParams(player.audioFormat.url);
+  let index;
+  try {
+    const head = await fetchAudioRange(tabId, audioUrl, 0, 16383);
+    index = YTD_MP4_INDEX.parseInitSegment(head.buffer.slice(head.byteOffset, head.byteOffset + head.byteLength));
+  } catch (error) {
+    return { success: false, error: "NO_AUDIO_INDEX", message: String(error?.message || error) };
+  }
+
+  const chunks = YTD_MP4_INDEX.planChunks(index, {
+    chunkSeconds: AI_CHUNK_SECONDS,
+    overlapSeconds: 10,
+  });
+
+  // 断点：上次跑到哪接着跑，已完成的块不重复花钱
+  const cached = await readAiCaptionCache(videoId);
+  const doneChunks = cached?.doneChunks || {};
+
+  const result = await YTD_TRANSCRIBE.run({
+    chunks,
+    concurrency: 2,
+    doneChunks,
+    transcribeChunk: (chunk) => transcribeOneChunk({
+      tabId, audioUrl, index, chunk, apiKey,
+      providerId: settings.asrProvider, model: settings.asrModel,
+    }),
+    onCheckpoint: async (state) => {
+      await writeAiCaptionCache(videoId, {
+        ...(await readAiCaptionCache(videoId)),
+        doneChunks: state.doneChunks,
+        totalChunks: chunks.length,
+        provider: provider.label,
+        updatedAt: Date.now(),
+      });
+    },
+    onChunkDone: onProgress,
+  });
+
+  await writeAiCaptionCache(videoId, {
+    segments: result.segments,
+    doneChunks: result.doneChunks,
+    totalChunks: chunks.length,
+    provider: provider.label,
+    source: "ai",
+    updatedAt: Date.now(),
+  });
+
+  return {
+    success: result.segments.length > 0,
+    ...toTranscriptShape(result.segments),
+    source: "ai",
+    provider: provider.label,
+    completed: result.completed,
+    total: result.total,
+    failed: result.failed,
+    rateLimited: result.rateLimited,
+    retryAfterSeconds: result.retryAfterSeconds,
+  };
+}
+
+/** 播放器地址里带着它自己的分段与封装参数，要剥掉换成我们的。 */
+function stripPlayerParams(rawUrl) {
+  const url = new URL(rawUrl);
+  for (const key of ["range", "rn", "rbuf", "ump", "srfvp", "sabr", "alr", "cmo"]) {
+    url.searchParams.delete(key);
+  }
+  return url.toString();
+}
+
+/** 在页面环境里取一段音频字节，用 base64 搬回来。 */
+async function fetchAudioRange(tabId, url, start, end) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [url, start, end],
+    func: async (u, s, e) => {
+      const res = await fetch(u, { headers: { Range: `bytes=${s}-${e}` }, credentials: "omit" });
+      if (!res.ok) return { error: `HTTP ${res.status}` };
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let binary = "";
+      const STEP = 0x8000;
+      for (let i = 0; i < bytes.length; i += STEP) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + STEP));
+      }
+      return { b64: btoa(binary) };
+    },
+  });
+  if (!result || result.error) throw new Error(result?.error || "audio fetch failed");
+  const binary = atob(result.b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/** 一块音频：下载 → 解码成 WAV → 送识别。解码在页面环境做，因为 service worker 没有 AudioContext。 */
+async function transcribeOneChunk({ tabId, audioUrl, index, chunk, apiKey, providerId, model }) {
+  const [initBytes, bodyBytes] = await Promise.all([
+    fetchAudioRange(tabId, audioUrl, 0, index.initLength - 1),
+    fetchAudioRange(tabId, audioUrl, chunk.byteStart, chunk.byteEnd),
+  ]);
+  const assembled = YTD_FETCHER.assembleChunk(initBytes, bodyBytes);
+
+  const [{ result: wavResult }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [Array.from(assembled)],
+    func: async (byteArray) => {
+      try {
+        const bytes = new Uint8Array(byteArray);
+        const context = new AudioContext();
+        const decoded = await context.decodeAudioData(bytes.buffer);
+        context.close();
+        const RATE = 16000;
+        const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * RATE), RATE);
+        const source = offline.createBufferSource();
+        source.buffer = decoded;
+        source.connect(offline.destination);
+        source.start();
+        const rendered = await offline.startRendering();
+        const pcm = rendered.getChannelData(0);
+
+        const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+        const tag = (o, t) => { for (let i = 0; i < t.length; i++) view.setUint8(o + i, t.charCodeAt(i)); };
+        tag(0, "RIFF"); view.setUint32(4, 36 + pcm.length * 2, true);
+        tag(8, "WAVE"); tag(12, "fmt ");
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+        view.setUint32(24, RATE, true); view.setUint32(28, RATE * 2, true);
+        view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+        tag(36, "data"); view.setUint32(40, pcm.length * 2, true);
+        for (let i = 0; i < pcm.length; i++) {
+          const v = Math.max(-1, Math.min(1, pcm[i]));
+          view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+        }
+        const out = new Uint8Array(view.buffer);
+        let binary = "";
+        const STEP = 0x8000;
+        for (let i = 0; i < out.length; i += STEP) {
+          binary += String.fromCharCode.apply(null, out.subarray(i, i + STEP));
+        }
+        return { b64: btoa(binary), seconds: decoded.duration };
+      } catch (err) {
+        return { error: String((err && err.message) || err) };
+      }
+    },
+  });
+  if (!wavResult || wavResult.error) throw new Error(wavResult?.error || "decode failed");
+
+  const binary = atob(wavResult.b64);
+  const wavBytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) wavBytes[i] = binary.charCodeAt(i);
+
+  const request = YTD_ASR_PROVIDERS.buildTranscriptionRequest({
+    providerId, apiKey, model, language: "auto",
+  });
+  const form = new FormData();
+  form.append("file", new Blob([wavBytes], { type: "audio/wav" }), "chunk.wav");
+  for (const [key, value] of Object.entries(request.fields)) form.append(key, value);
+
+  const response = await fetch(request.url, { method: "POST", headers: request.headers, body: form });
+  if (!response.ok) {
+    const text = await response.text();
+    const error = new Error(text.slice(0, 300));
+    error.status = response.status;
+    error.retryAfter = YTD_ASR_PROVIDERS.retryAfterSeconds(text, response.headers.get("retry-after"));
+    throw error;
+  }
+  return YTD_ASR_PROVIDERS.extractSegments(await response.json());
+}
+
+async function handleFetchTranscript(videoId, tabId) {
+  const settings = await getSettings();
+
+  // 已经花钱生成过的 AI 字幕直接复用，不重复计费
+  const cached = await readAiCaptionCache(videoId);
+  if (cached?.segments?.length) {
+    return {
+      success: true,
+      ...toTranscriptShape(cached.segments),
+      language: cached.language || null,
+      source: "ai",
+      provider: cached.provider,
+    };
+  }
+
+  // 没有标签页信息时退回原来的单层行为，保证任何情况下都不比原项目差
+  if (typeof tabId !== "number") return await fetchTranscriptFromSupadata(videoId);
+
+  const resolved = await YTD_TRANSCRIPT_SOURCE.resolve({
+    videoId,
+    aiCaptionsEnabled: settings.aiCaptionsEnabled,
+    youtubeSource: (id) => fetchYouTubePlayer(tabId, id),
+    nativeCaptions: (track) => fetchNativeCaptionTrack(tabId, track),
+    supadata: (id) => fetchTranscriptFromSupadata(id),
+  });
+
+  if (resolved.source === "supadata") {
+    return {
+      success: true,
+      transcript: resolved.transcript,
+      transcriptText: resolved.transcriptText,
+      transcriptTextTimestamped: resolved.transcriptTextTimestamped,
+      language: resolved.language,
+      source: "supadata",
+    };
+  }
+
+  if (resolved.source === "youtube") {
+    return {
+      success: true,
+      ...toTranscriptShape(resolved.transcript),
+      language: resolved.language,
+      source: "youtube",
+    };
+  }
+
+  // 没有任何现成字幕
+  if (resolved.needsAiCaptions) {
+    const asr = YTD_ASR_PROVIDERS.getProvider(settings.asrProvider);
+    const seconds = resolved.durationSeconds;
+    return {
+      success: false,
+      error: "NO_NATIVE_CAPTIONS",
+      message: "This video has no subtitles.",
+      aiCaptions: {
+        available: !!YTD_SETTINGS.activeAsrApiKey(settings),
+        durationSeconds: seconds,
+        estimatedUsd: YTD_ASR_PROVIDERS.estimateCost({
+          providerId: settings.asrProvider,
+          seconds,
+        }),
+        provider: asr.label,
+        freeTier: asr.freeTier,
+        // 超过单次额度上限的视频要提前说，而不是跑到一半才失败
+        exceedsHourlyQuota: !!asr.freeTier && seconds > asr.freeTier.secondsPerHour,
+      },
+    };
+  }
+
+  return {
+    success: false,
+    error: resolved.audioUnavailable ? "SOURCE_UNAVAILABLE" : "NO_TRANSCRIPT",
+    message: resolved.audioUnavailable
+      ? "Could not read this video right now. Please retry in a moment."
+      : "No subtitles found for this video.",
+  };
+}
+
+async function fetchTranscriptFromSupadata(videoId) {
   try {
     const settings = await getSettings();
     if (!settings.supadataApiKey) {
@@ -1188,7 +1611,7 @@ async function handleSaveNote(
 
     // If no cached transcript, fetch it
     if (!transcript) {
-      const transcriptResult = await handleFetchTranscript(videoId);
+      const transcriptResult = await fetchTranscriptFromSupadata(videoId);
       if (!transcriptResult.success) {
         return { success: false, error: "Could not fetch transcript" };
       }
@@ -1716,6 +2139,10 @@ async function callAiTranslation(
 // Pure validators are exposed for the repository's Node tests only.
 globalThis.__YTD_TRANSLATION_TESTING__ = {
   requestAiCompletion,
+  handleFetchTranscript,
+  handleGenerateAiCaptions,
+  stripPlayerParams,
+  toTranscriptShape,
   callAiTranslation,
   validateTranscriptBatchRequest,
   normalizeTranslatedSegmentBatch,
