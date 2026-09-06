@@ -910,12 +910,34 @@ async function fetchAudioRange(tabId, url, start, end) {
   return bytes;
 }
 
+/**
+ * Downloads a byte range as several parallel ranged requests.
+ *
+ * A single sequential GET against googlevideo is throttled hard: measured at
+ * 1.5 MB in three minutes, against 8 MB in 2.7 seconds across eight ranges.
+ * One request per chunk can therefore stall for minutes.
+ */
+async function fetchAudioRangeParallel(tabId, url, start, end, concurrency = 8) {
+  const parts = YTD_FETCHER.splitRange(start, end, concurrency);
+  const pieces = await Promise.all(
+    parts.map((part) => fetchAudioRange(tabId, url, part.start, part.end)),
+  );
+  const total = pieces.reduce((n, piece) => n + piece.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const piece of pieces) {
+    merged.set(piece, offset);
+    offset += piece.byteLength;
+  }
+  return merged;
+}
+
 /** One chunk: download, decode to WAV, transcribe. Decoding runs in the page
  * context because a service worker has no AudioContext. */
 async function transcribeOneChunk({ tabId, audioUrl, index, chunk, apiKey, providerId, model }) {
   const [initBytes, bodyBytes] = await Promise.all([
     fetchAudioRange(tabId, audioUrl, 0, index.initLength - 1),
-    fetchAudioRange(tabId, audioUrl, chunk.byteStart, chunk.byteEnd),
+    fetchAudioRangeParallel(tabId, audioUrl, chunk.byteStart, chunk.byteEnd),
   ]);
   const assembled = YTD_FETCHER.assembleChunk(initBytes, bodyBytes);
 

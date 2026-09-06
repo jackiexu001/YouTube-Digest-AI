@@ -107,3 +107,25 @@ test("the manifest declares each recognition provider's host, or Chrome blocks t
     );
   }
 });
+
+test("chunk audio is downloaded in parallel ranges, not one sequential request", () => {
+  const background = read("background.js");
+  const fn = background.slice(background.indexOf("async function transcribeOneChunk"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  // A single sequential GET against googlevideo is throttled hard: measured at
+  // 1.5 MB in three minutes, versus 8 MB in 2.7 seconds across eight ranges.
+  // Downloading a chunk in one request can therefore stall for minutes.
+  assert.match(
+    body,
+    /fetchAudioRangeParallel\(tabId, audioUrl, chunk\.byteStart/,
+    "chunk audio is fetched in a single ranged request, which YouTube throttles",
+  );
+
+  // And that helper must genuinely split the range rather than just be named for it
+  const helper = background.slice(background.indexOf("async function fetchAudioRangeParallel"));
+  assert.match(
+    helper.slice(0, helper.indexOf("\n}\n")),
+    /splitRange[\s\S]*Promise\.all/,
+    "fetchAudioRangeParallel does not actually split the range",
+  );
+});
