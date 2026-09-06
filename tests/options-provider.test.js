@@ -317,3 +317,27 @@ test("自定义服务商要用户自己填模型名，所以带出提示", () =>
   const openai = options.providerFormState({ providerId: "openai", apiKeys: {} });
   assert.equal(openai.modelHint, "", "有默认模型的服务商不需要提示");
 });
+
+test("全项目没有残留换色前的赭红", () => {
+  // 换主题色时最容易漏掉两类地方：注入到 YouTube 页面的内联样式，
+  // 以及写成 rgba 的阴影——它们都绕过了 CSS 变量
+  const files = ["content.js", "sidepanel.js", "sidepanel.css", "options.js", "options.css"];
+  const old = /#c8674f|#b25742|#ad523e|rgba\(\s*200,\s*103,\s*79/i;
+  for (const file of files) {
+    assert.doesNotMatch(read(file), old, `${file} 里还有换色前的赭红`);
+  }
+});
+
+test("注入到 YouTube 页面的按钮用的是本项目的橙色", () => {
+  const content = read("content.js");
+  assert.match(content, /#c2410c/, "注入按钮没有使用主题强调色");
+  assert.match(content, /#9a3412/, "注入按钮缺少悬停色");
+});
+
+test("阴影和遮罩用的是中性色，不是换色前的暖褐调", () => {
+  // 暖褐色阴影混在中性灰界面里会发脏，这类值不走 CSS 变量所以最容易漏
+  const warm = /rgba\(\s*(46,\s*42,\s*36|50,\s*42,\s*32)|#60483f/i;
+  for (const file of ["content.js", "sidepanel.css", "options.css"]) {
+    assert.doesNotMatch(read(file), warm, `${file} 里还有换色前的暖褐调`);
+  }
+});

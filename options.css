@@ -67,7 +67,7 @@ header {
 .language-switch .language-option[aria-pressed="true"] {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 4px rgba(46, 42, 36, 0.14);
+  box-shadow: 0 1px 4px rgba(24, 24, 27, 0.14);
 }
 
 .language-switch .language-option:focus-visible {
@@ -106,7 +106,7 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface);
-  box-shadow: 0 10px 30px rgba(46, 42, 36, 0.05);
+  box-shadow: 0 10px 30px rgba(24, 24, 27, 0.05);
 }
 
 h2 {
@@ -182,7 +182,7 @@ a {
   padding: 12px 14px;
   border-radius: 10px;
   background: #f8eee9;
-  color: #60483f;
+  color: #7c2d12;
   font-size: 13px;
 }
 
@@ -223,7 +223,7 @@ a {
   border: 1px solid #e7b9a8;
   border-radius: 10px;
   background: #fff2ec;
-  color: #60483f;
+  color: #7c2d12;
   font-size: 13px;
   font-weight: 750;
 }

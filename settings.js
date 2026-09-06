@@ -9,19 +9,31 @@ var YTD_SETTINGS = (() => {
     typeof YTD_PROVIDERS !== "undefined"
       ? YTD_PROVIDERS
       : require("./providers.js");
+  // 语音识别的服务商与文本模型完全分开：一个把声音变成文字，
+  // 一个做概览和翻译，用的是不同的服务、不同的密钥。
+  const asrApi =
+    typeof YTD_ASR_PROVIDERS !== "undefined"
+      ? YTD_ASR_PROVIDERS
+      : require("./asr/asr-providers.js");
 
   const STORAGE_KEY = "ytd_settings";
   const DEFAULT_PROVIDER = "deepseek";
+  const DEFAULT_ASR_PROVIDER = "groq";
 
   const DEFAULTS = Object.freeze({
     provider: DEFAULT_PROVIDER,
     aiModel: providersApi.getProvider(DEFAULT_PROVIDER).defaultModel,
     aiBaseUrl: providersApi.getProvider(DEFAULT_PROVIDER).baseUrl,
     aiApiKeys: Object.freeze({}),
+    asrProvider: DEFAULT_ASR_PROVIDER,
+    asrModel: asrApi.getProvider(DEFAULT_ASR_PROVIDER).defaultModel,
+    asrApiKeys: Object.freeze({}),
+    aiCaptionsEnabled: true,
     supadataApiKey: "",
   });
 
   const KNOWN_PROVIDERS = new Set(providersApi.PROVIDERS.map((p) => p.id));
+  const KNOWN_ASR_PROVIDERS = new Set(asrApi.PROVIDERS.map((p) => p.id));
 
   function text(value) {
     return typeof value === "string" ? value.trim() : "";
@@ -32,14 +44,17 @@ var YTD_SETTINGS = (() => {
     return !!input && typeof input.aiApiKey === "string" && !!input.aiApiKey.trim();
   }
 
-  function normalizeKeys(input) {
-    const source = input && typeof input.aiApiKeys === "object" ? input.aiApiKeys : {};
+  function pickKeys(source, known) {
     const keys = {};
-    for (const id of KNOWN_PROVIDERS) {
-      const value = text(source[id]);
+    for (const id of known) {
+      const value = text((source || {})[id]);
       if (value) keys[id] = value;
     }
     return keys;
+  }
+
+  function normalizeKeys(input) {
+    return pickKeys(input && input.aiApiKeys, KNOWN_PROVIDERS);
   }
 
   function normalize(input = {}) {
@@ -57,11 +72,22 @@ var YTD_SETTINGS = (() => {
     const baseUrl =
       provider === "custom" ? text(input.aiBaseUrl) : meta.baseUrl;
 
+    const requestedAsr = text(input.asrProvider);
+    const asrProvider = KNOWN_ASR_PROVIDERS.has(requestedAsr)
+      ? requestedAsr
+      : DEFAULT_ASR_PROVIDER;
+    const asrMeta = asrApi.getProvider(asrProvider);
+
     return {
       provider,
       aiModel: model,
       aiBaseUrl: baseUrl,
       aiApiKeys: normalizeKeys(input),
+      asrProvider: asrProvider,
+      asrModel: text(input.asrModel) || asrMeta.defaultModel,
+      asrApiKeys: pickKeys(input.asrApiKeys, KNOWN_ASR_PROVIDERS),
+      // 没有明确关掉就算开着：这是本项目相对上游新增的核心能力
+      aiCaptionsEnabled: input.aiCaptionsEnabled !== false,
       supadataApiKey: text(input.supadataApiKey),
     };
   }
@@ -85,6 +111,10 @@ var YTD_SETTINGS = (() => {
     return (settings.aiApiKeys || {})[settings.provider] || "";
   }
 
+  function activeAsrApiKey(settings = {}) {
+    return (settings.asrApiKeys || {})[settings.asrProvider] || "";
+  }
+
   function canonicalYouTubeUrl(videoId) {
     const normalized = String(videoId || "").trim();
     if (!/^[A-Za-z0-9_-]{6,20}$/.test(normalized)) {
@@ -100,6 +130,7 @@ var YTD_SETTINGS = (() => {
     normalize,
     migrateLegacyCustom,
     activeApiKey,
+    activeAsrApiKey,
     canonicalYouTubeUrl,
   };
 })();
