@@ -112,3 +112,34 @@ test("auto-start does nothing when no key is configured", () => {
     "auto-start must also require canStart, or it repeatedly triggers a doomed action",
   );
 });
+
+test("AI captions go through the same render path, so timestamps stay clickable", () => {
+  const source = read("sidepanel.js");
+  const fn = source.slice(source.indexOf("function applyTranscript"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  // renderTranscript is what attaches the click-to-seek handler and starts
+  // playback tracking; without it AI captions would render as dead text
+  assert.match(body, /renderTranscript\(\)/, "applyTranscript does not call renderTranscript");
+});
+
+test("AI captions honour the selected transcript language mode", () => {
+  const source = read("sidepanel.js");
+  const fn = source.slice(source.indexOf("function applyTranscript"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  // Without this, a user reading in Chinese or bilingual mode gets AI
+  // captions in the original language only, unlike every other source
+  assert.match(
+    body,
+    /currentTranscriptMode !== "original"[\s\S]*translateTranscript\(\)/,
+    "applyTranscript never translates, so the language toggle is ignored",
+  );
+});
+
+test("AI captions are written to the shared cache the other features read", () => {
+  const source = read("sidepanel.js");
+  const fn = source.slice(source.indexOf("function applyTranscript"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  // Overviews and notes read the digest cache; skipping it means reopening
+  // the video refetches everything the other sources would have kept
+  assert.match(body, /saveToCache\(/, "applyTranscript never saves to the shared cache");
+});

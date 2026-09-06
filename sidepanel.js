@@ -1447,7 +1447,7 @@ async function startAiCaptions(videoId) {
     button.disabled = false;
     button.textContent = "Resume";
     // Show what finished; hitting a limit later should not hide it all
-    if (result.transcript?.length) applyTranscript(result);
+    if (result.transcript?.length) await applyTranscript(result);
     return;
   }
 
@@ -1458,21 +1458,29 @@ async function startAiCaptions(videoId) {
     return;
   }
 
-  applyTranscript(result);
+  await applyTranscript(result);
 }
 
 /** Hands the generated captions to the existing render path; downstream
  * features cannot tell where they came from. */
-function applyTranscript(result) {
+async function applyTranscript(result) {
   currentTranscript = result.transcript;
   currentTranscriptText = result.transcriptText;
   currentTranscriptTimestamped = result.transcriptTextTimestamped;
   currentTranscriptLanguage = result.language || null;
+  // renderTranscript attaches the click-to-seek handler and starts playback
+  // tracking, so AI captions behave exactly like every other source
   renderTranscript();
   showState("results");
   document.getElementById("tabsNav").style.display = "flex";
   loadNotes(currentVideoId);
   setupExplainFeature();
+  // Follow the same language mode as the rest of the panel, or a reader in
+  // Chinese or bilingual mode would get AI captions in the original only
+  if (currentTranscriptMode !== "original") translateTranscript();
+  // Overviews and notes read the shared cache; skipping it would make
+  // reopening the video refetch what other sources would have kept
+  await saveToCache(currentVideoId);
 }
 
 // Update progress per finished chunk so the user can see it moving
