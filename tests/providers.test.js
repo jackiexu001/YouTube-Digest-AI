@@ -5,16 +5,17 @@ const providers = require("../providers.js");
 
 test("每个服务商都声明了适配器、基础地址和默认模型", () => {
   const ids = providers.listProviders().map((p) => p.id);
-  for (const id of ["deepseek", "openai", "glm", "doubao", "anthropic", "gemini", "custom"]) {
-    assert.ok(ids.includes(id), `缺少服务商 ${id}`);
-  }
+  // 只保留主流几家 + 自定义。智谱、豆包等仍可通过「自定义」接入，
+  // 不必为每一家单独维护一条配置。
+  assert.deepEqual(ids, ["deepseek", "openai", "glm", "anthropic", "gemini", "custom"]);
   for (const p of providers.listProviders()) {
     assert.ok(p.label, `${p.id} 缺少显示名`);
     assert.ok(p.adapter, `${p.id} 缺少适配器`);
     if (p.id !== "custom") {
       assert.match(p.baseUrl, /^https:\/\//, `${p.id} 基础地址不是 https`);
-      assert.ok(p.defaultModel, `${p.id} 缺少默认模型`);
     }
+    // 默认模型可以为空（豆包用接入点 ID），但那时必须给提示
+    assert.ok(p.defaultModel || p.modelHint, `${p.id} 既没有默认模型也没有提示`);
   }
 });
 
@@ -22,9 +23,10 @@ test("基础地址已包含各家自己的路径前缀，代码不再拼接 /v1"
   const byId = Object.fromEntries(providers.listProviders().map((p) => [p.id, p]));
   assert.equal(byId.deepseek.baseUrl, "https://api.deepseek.com");
   assert.equal(byId.openai.baseUrl, "https://api.openai.com/v1");
+  // 地址完整存储，代码不拼 /v1——否则接入智谱这类用 /api/paas/v4 的服务会 404
   // 智谱用 /api/paas/v4，硬拼 /v1 会 404
   assert.equal(byId.glm.baseUrl, "https://open.bigmodel.cn/api/paas/v4");
-  assert.doesNotMatch(byId.glm.baseUrl, /\/v1$/);
+  assert.equal(byId.glm.defaultModel, "glm-5");
 });
 
 test("OpenAI 兼容适配器把请求发到 {base}/chat/completions", () => {
@@ -50,7 +52,7 @@ test("DeepSeek 专属的 thinking 字段不会出现在其他服务商的请求�
   const deepseek = providers.buildRequest({ providerId: "deepseek", baseUrl: "https://api.deepseek.com", ...base });
   assert.deepEqual(deepseek.body.thinking, { type: "disabled" });
 
-  for (const id of ["openai", "glm", "doubao", "anthropic", "gemini"]) {
+  for (const id of ["openai", "glm", "anthropic", "gemini"]) {
     const req = providers.buildRequest({ providerId: id, baseUrl: "https://example.com", ...base });
     assert.equal(req.body.thinking, undefined, `${id} 不应带 thinking 字段`);
   }
@@ -142,14 +144,6 @@ test("Anthropic 和 Gemini 的模型列表用各自的路径与鉴权", () => {
   assert.doesNotMatch(gemini.url, /test-key/);
 });
 
-test("豆包声明为不支持获取模型列表", () => {
-  // 豆包用「接入点 ID」而非模型名，列表接口要火山引擎签名，简单的 Key 拿不到
-  assert.equal(
-    providers.listModelsRequest({ providerId: "doubao", baseUrl: "https://x", apiKey: "k" }),
-    null,
-  );
-});
-
 test("各适配器从各自的模型列表结构里取出模型名", () => {
   assert.deepEqual(
     providers.extractModels("openai", { data: [{ id: "gpt-5" }, { id: "gpt-5-mini" }] }),
@@ -168,7 +162,7 @@ test("各适配器从各自的模型列表结构里取出模型名", () => {
 
 test("模型列表结构不符合预期时返回空数组而不是抛错", () => {
   // 各家接口随时可能改结构，界面要能降级到手填而不是崩掉
-  for (const id of ["openai", "anthropic", "gemini"]) {
+  for (const id of ["openai", "glm", "anthropic", "gemini"]) {
     assert.deepEqual(providers.extractModels(id, null), []);
     assert.deepEqual(providers.extractModels(id, { unexpected: true }), []);
   }
@@ -252,4 +246,44 @@ test("每个用到 settings.js 的页面都先加载 providers.js", () => {
       background.indexOf('importScripts("settings.js")'),
     "background.js 里 providers.js 必须排在 settings.js 前面",
   );
+});
+
+test("Anthropic 请求带上浏览器直连所需的头，否则会被 CORS 拒绝", () => {
+  // Anthropic 默认拒绝浏览器发起的请求，必须显式声明。
+  // 少这一个头，整个 Anthropic 服务商在扩展里完全不可用，
+  // 而这一点任何单元测试都测不出来——只有真实调用才会暴露。
+  const req = providers.buildRequest({
+    providerId: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-opus-5",
+    apiKey: "k",
+    messages: [],
+    maxTokens: 10,
+  });
+  assert.equal(req.headers["anthropic-dangerous-direct-browser-access"], "true");
+});
+
+test("获取 Anthropic 模型列表同样要带浏览器直连的头", () => {
+  const req = providers.listModelsRequest({
+    providerId: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    apiKey: "k",
+  });
+  assert.equal(req.headers["anthropic-dangerous-direct-browser-access"], "true");
+});
+
+test("默认模型名与各家官方当前的模型 id 一致", () => {
+  const byId = Object.fromEntries(providers.listProviders().map((p) => [p.id, p]));
+  // 核对自官方文档（2026-09）。模型更新很快，所以界面提供「获取模型」按钮，
+  // 这里的默认值只是让用户填了密钥就能直接跑通第一次。
+  assert.equal(byId.anthropic.defaultModel, "claude-opus-5");
+  assert.equal(byId.openai.defaultModel, "gpt-5.6");
+  assert.equal(byId.gemini.defaultModel, "gemini-3.8-flash");
+});
+
+test("需要用户自己填模型名的服务商都带有提示文案", () => {
+  for (const p of providers.listProviders()) {
+    if (p.defaultModel) continue;
+    assert.ok(p.modelHint, `${p.id} 没有默认模型却也没有提示，用户会不知道填什么`);
+  }
 });

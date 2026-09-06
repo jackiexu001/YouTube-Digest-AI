@@ -13,7 +13,7 @@ test("选中某个服务商时，表单填入它的默认模型、地址和密�
   });
 
   assert.equal(state.label, "OpenAI");
-  assert.equal(state.model, "gpt-5");
+  assert.equal(state.model, "gpt-5.6");
   assert.equal(state.baseUrl, "https://api.openai.com/v1");
   assert.equal(state.apiKey, "o-key");
   assert.match(state.keyUrl, /^https:\/\//);
@@ -24,10 +24,10 @@ test("选中某个服务商时，表单填入它的默认模型、地址和密�
 test("已保存的模型名优先于默认模型", () => {
   const state = options.providerFormState({
     providerId: "openai",
-    savedModel: "gpt-5-mini",
+    savedModel: "gpt-5.6-mini",
     apiKeys: {},
   });
-  assert.equal(state.model, "gpt-5-mini");
+  assert.equal(state.model, "gpt-5.6-mini");
 });
 
 test("切换服务商时各自的密钥不会互相串", () => {
@@ -48,9 +48,9 @@ test("自定义服务商时地址框可编辑，并回填已保存的地址", ()
   assert.equal(state.baseUrl, "https://my-proxy.example.com/v1");
 });
 
-test("豆包标记为不能自动获取模型列表", () => {
-  assert.equal(options.providerFormState({ providerId: "doubao", apiKeys: {} }).canListModels, false);
+test("能否自动获取模型列表按服务商标记", () => {
   assert.equal(options.providerFormState({ providerId: "openai", apiKeys: {} }).canListModels, true);
+  assert.equal(options.providerFormState({ providerId: "anthropic", apiKeys: {} }).canListModels, true);
 });
 
 test("获取模型成功时返回模型名列表", async () => {
@@ -83,17 +83,6 @@ test("获取模型失败时给出可读原因，而不是抛错让页面崩掉",
   });
   assert.equal(networkError.ok, false);
   assert.match(networkError.reason, /网络不通/);
-});
-
-test("不支持获取模型的服务商直接返回不支持，不发请求", async () => {
-  let called = false;
-  const result = await options.fetchModelList({
-    providerId: "doubao", baseUrl: "https://x", apiKey: "k",
-    fetchImpl: async () => { called = true; },
-  });
-  assert.equal(result.ok, false);
-  assert.equal(result.unsupported, true);
-  assert.equal(called, false);
 });
 
 test("没填密钥时不发获取模型的请求", async () => {
@@ -198,8 +187,7 @@ test("manifest 声明了各内置服务商的访问权限，并允许运行时�
   const hosts = manifest.host_permissions.join(" ");
   for (const domain of [
     "api.deepseek.com", "api.openai.com", "open.bigmodel.cn",
-    "ark.cn-beijing.volces.com", "api.anthropic.com",
-    "generativelanguage.googleapis.com",
+    "api.anthropic.com", "generativelanguage.googleapis.com",
   ]) {
     assert.match(hosts, new RegExp(domain.replace(/\./g, "\\.")), `manifest 缺少 ${domain}`);
   }
@@ -319,4 +307,13 @@ test("带服务商名的文案用独立标记，不会被通用的语言刷新�
     assert.doesNotMatch(tag[0], /\sdata-i18n="/, `${id} 不应使用通用的 data-i18n`);
     assert.match(tag[0], /data-i18n-provider="/, `${id} 应使用 data-i18n-provider`);
   }
+});
+
+test("自定义服务商要用户自己填模型名，所以带出提示", () => {
+  const custom = options.providerFormState({ providerId: "custom", apiKeys: {} });
+  assert.equal(custom.model, "");
+  assert.ok(custom.modelHint, "自定义服务商没有默认模型，必须给提示");
+
+  const openai = options.providerFormState({ providerId: "openai", apiKeys: {} });
+  assert.equal(openai.modelHint, "", "有默认模型的服务商不需要提示");
 });

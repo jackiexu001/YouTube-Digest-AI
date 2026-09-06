@@ -321,6 +321,8 @@ const YTD_OPTIONS = (() => {
       baseUrl: isCustom ? String(savedBaseUrl || "").trim() : provider.baseUrl,
       baseUrlEditable: isCustom,
       keyUrl: provider.keyUrl,
+      // 没有默认模型的服务商要告诉用户填什么，否则面对空框无从下手
+      modelHint: provider.defaultModel ? "" : provider.modelHint || "",
       apiKey: String(apiKeys[provider.id] || ""),
       canListModels: providersApi.listModelsRequest({
         providerId: provider.id,

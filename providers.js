@@ -10,9 +10,19 @@
  */
 var YTD_PROVIDERS = (() => {
   const ANTHROPIC_VERSION = "2023-06-01";
+  // Anthropic 默认拒绝浏览器发起的请求，必须显式声明才放行。
+  // 密钥是用户自己的、存在本地，不存在「把开发者密钥暴露给访客」的风险。
+  const ANTHROPIC_BROWSER_HEADERS = {
+    "anthropic-version": ANTHROPIC_VERSION,
+    "anthropic-dangerous-direct-browser-access": "true",
+  };
 
   // baseUrl 存的是完整前缀。各家路径不一致（智谱是 /api/paas/v4 而非 /v1），
   // 代码只负责在后面接具体端点，绝不自己拼 /v1。
+  //
+  // defaultModel 核对自各家官方文档（2026-09）。模型更新很快——OpenAI 几个月
+  // 就从 gpt-5 到 gpt-5.6——所以界面提供「获取模型」按钮拉取实时列表，
+  // 这里的默认值只负责让第一次调用能跑通。
   const PROVIDERS = Object.freeze([
     {
       id: "deepseek",
@@ -29,27 +39,17 @@ var YTD_PROVIDERS = (() => {
       label: "OpenAI",
       adapter: "openai",
       baseUrl: "https://api.openai.com/v1",
-      defaultModel: "gpt-5",
+      defaultModel: "gpt-5.6",
       keyUrl: "https://platform.openai.com/api-keys",
     },
     {
       id: "glm",
       label: "智谱 GLM",
       adapter: "openai",
+      // 智谱用 /api/paas/v4，不是 /v1。很多工具因为自动拼 /v1 而 404
       baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-      defaultModel: "glm-4-plus",
+      defaultModel: "glm-5",
       keyUrl: "https://bigmodel.cn/usercenter/apikeys",
-    },
-    {
-      id: "doubao",
-      label: "豆包",
-      adapter: "openai",
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      defaultModel: "doubao-pro-32k",
-      keyUrl: "https://console.volcengine.com/ark",
-      // 豆包用「接入点 ID」而非模型名，列表接口需要火山引擎签名认证，
-      // 简单的 Bearer Key 拿不到，所以不提供自动获取。
-      canListModels: false,
     },
     {
       id: "anthropic",
@@ -64,7 +64,7 @@ var YTD_PROVIDERS = (() => {
       label: "Google Gemini",
       adapter: "gemini",
       baseUrl: "https://generativelanguage.googleapis.com",
-      defaultModel: "gemini-3-pro",
+      defaultModel: "gemini-3.8-flash",
       keyUrl: "https://aistudio.google.com/apikey",
     },
     {
@@ -74,6 +74,7 @@ var YTD_PROVIDERS = (() => {
       adapter: "openai",
       baseUrl: "",
       defaultModel: "",
+      modelHint: "填写该服务商文档里给出的模型名",
       keyUrl: "",
     },
   ]);
@@ -148,7 +149,7 @@ var YTD_PROVIDERS = (() => {
           headers: {
             "Content-Type": "application/json",
             "x-api-key": apiKey,
-            "anthropic-version": ANTHROPIC_VERSION,
+            ...ANTHROPIC_BROWSER_HEADERS,
           },
           body,
         };
@@ -163,7 +164,7 @@ var YTD_PROVIDERS = (() => {
       listModelsRequest({ baseUrl, apiKey }) {
         return {
           url: `${trimSlash(baseUrl)}/v1/models`,
-          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
+          headers: { "x-api-key": apiKey, ...ANTHROPIC_BROWSER_HEADERS },
         };
       },
       extractModels(data) {
