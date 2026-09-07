@@ -114,9 +114,9 @@ function createHarness() {
     },
     querySelectorAll(selector) {
       if (selector === "ytd-watch-metadata #actions-inner") return actionRows;
-      if (selector === "#ytd-digest-button") {
+      if (selector === "#ytda-digest-button") {
         return elements.filter(
-          (element) => element.id === "ytd-digest-button" && element.isConnected,
+          (element) => element.id === "ytda-digest-button" && element.isConnected,
         );
       }
       if (selector.includes("top-level-buttons-computed")) return fallbackRows;
@@ -234,7 +234,7 @@ test("Digest button skips a hidden responsive toolbar", () => {
   assert.equal(harness.context.injectDigestButton(), true);
   assert.equal(hiddenGroup.children.length, 0);
   assert.equal(visibleRow.children.length, 1);
-  assert.equal(visibleGroup.children[0].id, "ytd-digest-button");
+  assert.equal(visibleGroup.children[0].id, "ytda-digest-button");
   assert.equal(visibleGroup.children[1], nativeButton);
   assert.match(visibleGroup.children[0].style.cssText, /flex:\s*0 0 auto/);
   assert.match(visibleGroup.children[0].style.cssText, /width:\s*max-content/);
@@ -254,9 +254,9 @@ test("Digest button replaces stale instances and removes duplicates", () => {
   harness.actionRows.push(staleRow, visibleRow);
 
   const staleButton = new FakeElement();
-  staleButton.id = "ytd-digest-button";
+  staleButton.id = "ytda-digest-button";
   const duplicateButton = new FakeElement();
-  duplicateButton.id = "ytd-digest-button";
+  duplicateButton.id = "ytda-digest-button";
   harness.elements.push(staleButton, duplicateButton);
   staleGroup.appendChild(staleButton);
   staleGroup.appendChild(duplicateButton);
@@ -266,7 +266,7 @@ test("Digest button replaces stale instances and removes duplicates", () => {
   assert.equal(visibleRow.children.length, 1);
   assert.equal(visibleGroup.children.length, 1);
   assert.notEqual(visibleGroup.children[0], staleButton);
-  assert.equal(visibleGroup.children[0].id, "ytd-digest-button");
+  assert.equal(visibleGroup.children[0].id, "ytda-digest-button");
   assert.equal(staleButton.isConnected, false);
   assert.equal(duplicateButton.isConnected, false);
 });
@@ -300,7 +300,7 @@ test("resize reconciliation follows YouTube to the newly visible toolbar", () =>
   assert.equal(firstGroup.children.length, 0);
   assert.equal(secondRow.children.length, 1);
   assert.equal(secondGroup.children.length, 1);
-  assert.equal(secondGroup.children[0].id, "ytd-digest-button");
+  assert.equal(secondGroup.children[0].id, "ytda-digest-button");
 });
 
 test("DOM mutation reconciliation repairs a replaced toolbar", () => {

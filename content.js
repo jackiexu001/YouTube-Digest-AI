@@ -229,7 +229,7 @@ function findDigestButtonHost() {
 
 function createDigestButton() {
   const digestButton = document.createElement("button");
-  digestButton.id = "ytd-digest-button";
+  digestButton.id = "ytda-digest-button";
   digestButton.type = "button";
   digestButton.setAttribute("aria-label", "Open YouTube Digest");
   digestButton.innerHTML = `<span class="ytd-digest-label">Digest</span>`;
@@ -300,7 +300,7 @@ function createDigestButton() {
  */
 function injectDigestButton() {
   const existingButtons = Array.from(
-    document.querySelectorAll("#ytd-digest-button"),
+    document.querySelectorAll("#ytda-digest-button"),
   );
 
   if (!window.location.pathname.includes("/watch")) {
@@ -401,7 +401,7 @@ function injectNoteButton() {
   // Don't inject if button already exists and is properly tracked.
   // If a stale button exists (e.g., from a previous content-script instance),
   // remove it and re-inject so event listeners are attached to the live one.
-  const existingButton = document.getElementById("ytd-note-button");
+  const existingButton = document.getElementById("ytda-note-button");
   if (existingButton) {
     if (ytdNoteButton === existingButton && existingButton.isConnected) {
       return; // already injected and connected
@@ -436,7 +436,7 @@ function injectNoteButton() {
 
   // Create the note button — a soft rounded pill that floats over the player
   const noteButton = document.createElement("button");
-  noteButton.id = "ytd-note-button";
+  noteButton.id = "ytda-note-button";
   noteButton.innerHTML = `
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right: 7px;">
       <path d="M12 20h9"></path>
@@ -554,9 +554,13 @@ function handleNoteKeyboardShortcut(e) {
     return;
   }
 
+  // With upstream installed too, both listeners see the same keypress and
+  // would each save a note. Mark the event so only the first one acts.
+  if (e.__YTDA_NOTE_HANDLED__) return;
+  e.__YTDA_NOTE_HANDLED__ = true;
+
   // Prevent YouTube's own "n" shortcut (e.g. next video in playlist)
   e.preventDefault();
-  e.stopPropagation();
 
   // Show brief visual feedback on the button, then save
   showNoteButton();
@@ -635,11 +639,11 @@ async function saveCurrentNote() {
  */
 function showNoteSavedToast(note) {
   // Remove existing toast
-  const existing = document.getElementById("ytd-note-toast");
+  const existing = document.getElementById("ytda-note-toast");
   if (existing) existing.remove();
 
   const toast = document.createElement("div");
-  toast.id = "ytd-note-toast";
+  toast.id = "ytda-note-toast";
   toast.innerHTML = `
     <div style="font-weight: 700; margin-bottom: 6px; color: #ef6826;">Note saved</div>
     <div style="font-size: 12px; color: #6b6258; margin-bottom: 8px;">${escapeHtmlForContent(note.timestamp)} — ${escapeHtmlForContent(note.videoTitle)}</div>
@@ -807,7 +811,7 @@ document.addEventListener("yt-navigate-finish", () => {
 
   // Remove old buttons (they will be re-injected for the new video)
   document
-    .querySelectorAll("#ytd-digest-button")
+    .querySelectorAll("#ytda-digest-button")
     .forEach((button) => button.remove());
   ytdDigestButton = null;
   if (digestButtonReconcileTimer) {
@@ -815,7 +819,7 @@ document.addEventListener("yt-navigate-finish", () => {
     digestButtonReconcileTimer = null;
   }
 
-  const existingNoteButton = document.getElementById("ytd-note-button");
+  const existingNoteButton = document.getElementById("ytda-note-button");
   if (existingNoteButton) existingNoteButton.remove();
 
   // Reset note button state
@@ -828,7 +832,7 @@ document.addEventListener("yt-navigate-finish", () => {
   }
 
   // Remove any toasts
-  const existingToast = document.getElementById("ytd-note-toast");
+  const existingToast = document.getElementById("ytda-note-toast");
   if (existingToast) existingToast.remove();
 
   // Re-inject buttons for the new video (with a small delay for YouTube to render)
