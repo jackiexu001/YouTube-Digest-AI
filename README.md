@@ -16,6 +16,20 @@ Turn every YouTube video into a resource for deep learning. YouTube Digest bring
 
 YouTube Digest is a bring-your-own-key project installed locally from GitHub. It is not available through the Chrome Web Store, does not include API credits, and does not run a developer-operated server.
 
+## What's new in v2.0.1
+
+Three fixes found by auditing the wiring rather than the modules:
+
+- **Running alongside upstream froze the YouTube tab.** Both extensions watch
+  the page and remove any button they did not create, so identical element ids
+  made them tear each other down without end. Ours are now namespaced.
+- **Chunk audio downloaded sequentially instead of in parallel.** The parallel
+  fetcher existed and was tested, but was never called. A single sequential
+  request against googlevideo is throttled to about 1.5 MB in three minutes,
+  so a chunk could stall with no sign of progress.
+- **AI captions ignored the transcript language mode** and skipped the shared
+  cache, unlike every other caption source.
+
 ## What's new in v2.0.0
 
 Two changes on top of upstream YouTube Digest:

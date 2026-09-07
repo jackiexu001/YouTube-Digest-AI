@@ -29,7 +29,7 @@ test("manifest uses minimized install-time permissions", () => {
   }
     // Two headline features over upstream: multiple providers and AI captions.
   // The version also separates this fork from upstream's numbering
-  assert.equal(manifest.version, "2.0.0");
+  assert.equal(manifest.version, "2.0.1");
 });
 
 test("release copy documents current scope without em dashes", () => {
